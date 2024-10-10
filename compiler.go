@@ -14,8 +14,13 @@ type Node struct {
 	class string
 	dtype string
 	value string
-	right *Node
 	left  *Node
+	right *Node
+}
+
+type Symbol struct {
+	dtype string
+	value string
 }
 
 func main() {
@@ -46,7 +51,7 @@ func readLines(inputFile string) {
 	scanner := bufio.NewScanner(f)
 
 	for scanner.Scan() {
-		parser(scanner.Text())
+		doohickey(scanner.Text())
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -54,50 +59,146 @@ func readLines(inputFile string) {
 	}
 }
 
-func parser(line string) {
+func doohickey(line string) {
 	root := []*Node{}
 
 	tokens := strings.Fields(line)
 
-	types := []string{"int", "string", "float", "char"}
-	equals := []string{"="}
-	operators := []string{"+", "-", "*", "/"}
-	numbers := strings.Split("1234567890", "")
-	letters := strings.Split("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", "")
-
 	format := ""
 
-	for i := 0; i < len(tokens); i++ {
-		if slices.Contains(types, tokens[i]) {
-			format = format + "TYPE "
-		} else if slices.Contains(equals, tokens[i]) {
-			format = format + "ASSIGN "
-		} else if slices.Contains(numbers, tokens[i]) {
-			format = format + "NUMBER "
-		} else if slices.Contains(letters, tokens[i]) {
-			format = format + "IDENTIFIER "
-		} else if slices.Contains(operators, tokens[i]) {
-			switch tokens[i] {
-			case "+":
-				format = format + "PLUS "
-			case "-":
-				format = format + "MINUS "
-			case "*":
-				format = format + "MULT "
-			case "/":
-				format = format + "DIV "
-			}
-		} else {
-			fmt.Println("Unrecognized character please kys")
-			os.Exit(3)
-		}
-	}
+	fmt.Println(tokens)
+
 	format = strings.TrimSpace(format)
-	root = append(root, createNode(tokens, format))
+	root = append(root, parser(tokens))
 
 	if root[0].class == "ASSIGN" {
 		fmt.Println(root[0].left.value + " = " + root[0].right.value)
 	}
+}
+
+func HelperPreOrder(node *Node, processFunc func(v string)) {
+	if node != nil {
+		processFunc(node.value)
+		HelperPreOrder(node.left, processFunc)
+		HelperPreOrder(node.right, processFunc)
+	}
+}
+
+func traverseAST(root []*Node) []string {
+	var res []string
+	for i := 0; i < len(root); i++ {
+		processFunc := func(v string) {
+			res = append(res, v)
+		}
+		HelperPreOrder(root[i], processFunc)
+	}
+	return res
+}
+
+func bisect(expression []string, character string, direction string) []string {
+	index := slices.Index(expression, character)
+
+	// Check if character is not found
+	if index == -1 {
+		fmt.Println("Character not found in expression.")
+		os.Exit(3)
+	}
+
+	tokens := []string{}
+	if direction == "right" {
+		for i := index + 1; i < len(expression); i++ {
+			tokens = append(tokens, expression[i])
+		}
+	} else if direction == "left" {
+		for i := 0; i < index; i++ {
+			tokens = append(tokens, expression[i])
+		}
+	} else {
+		fmt.Println("Did not recognize direction: " + direction)
+		os.Exit(3)
+	}
+
+	return tokens
+}
+
+func parser(tokens []string) *Node {
+
+	var newNode Node
+
+	numbers := strings.Split("1234567890", "")
+	letters := strings.Split("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", "")
+
+	if slices.Contains(tokens, "int") {
+		newNode = Node{
+			class: "INITIALIZE",
+			dtype: "STRING",
+			value: "int",
+		}
+
+	} else if slices.Contains(tokens, "=") {
+		newNode = Node{
+			class: "ASSIGN",
+			dtype: "CHAR",
+			value: "=",
+			left:  parser(bisect(tokens, "=", "left")),
+			right: parser(bisect(tokens, "=", "right")),
+		}
+	} else if slices.Contains(tokens, "*") {
+		newNode = Node{
+			class: "MULT",
+			dtype: "CHAR",
+			value: "*",
+			left:  parser(bisect(tokens, "*", "left")),
+			right: parser(bisect(tokens, "*", "right")),
+		}
+
+	} else if slices.Contains(tokens, "/") {
+		newNode = Node{
+			class: "DIV",
+			dtype: "CHAR",
+			value: "/",
+			left:  parser(bisect(tokens, "/", "left")),
+			right: parser(bisect(tokens, "/", "right")),
+		}
+
+	} else if slices.Contains(tokens, "+") {
+		newNode = Node{
+			class: "ADD",
+			dtype: "CHAR",
+			value: "+",
+			left:  parser(bisect(tokens, "+", "left")),
+			right: parser(bisect(tokens, "+", "right")),
+		}
+
+	} else if slices.Contains(tokens, "-") {
+		newNode = Node{
+			class: "SUB",
+			dtype: "CHAR",
+			value: "-",
+			left:  parser(bisect(tokens, "-", "left")),
+			right: parser(bisect(tokens, "-", "right")),
+		}
+
+	} else if slices.Contains(numbers, tokens[0]) {
+		newNode = Node{
+			class: "NUMBER",
+			dtype: "INT",
+			value: tokens[0],
+		}
+	} else if slices.Contains(letters, tokens[0]) {
+		newNode = Node{
+			class: "IDENTIFIER",
+			dtype: "CHAR",
+			value: tokens[0],
+		}
+
+	} else {
+		fmt.Println("Unrecognized character")
+		os.Exit(3)
+
+	}
+
+	return &newNode
 }
 
 func createNode(expression []string, format string) *Node {
@@ -117,8 +218,8 @@ func createNode(expression []string, format string) *Node {
 			class: "ASSIGN",
 			dtype: "CHAR",
 			value: expression[1],
-			right: createNode([]string{expression[2]}, "NUMBER"),
 			left:  createNode([]string{expression[0]}, "IDENTIFIER"),
+			right: createNode([]string{expression[2]}, "NUMBER"),
 		}
 
 	case "IDENTIFIER":
