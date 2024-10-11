@@ -25,7 +25,10 @@ type Symbol struct {
 
 func main() {
 	var inputFile string = getFlags()
-	readLines(inputFile)
+	lines := readLines(inputFile)
+	for i := 0; i < len(lines); i++ {
+		doohickey(lines[i])
+	}
 }
 
 func getFlags() string {
@@ -38,7 +41,9 @@ func getFlags() string {
 	return string(*inputFile)
 }
 
-func readLines(inputFile string) {
+func readLines(inputFile string) []string {
+	lines := []string{}
+
 	// open file
 	f, err := os.Open(inputFile)
 	if err != nil {
@@ -51,15 +56,19 @@ func readLines(inputFile string) {
 	scanner := bufio.NewScanner(f)
 
 	for scanner.Scan() {
-		doohickey(scanner.Text())
+		lines = append(lines, scanner.Text())
 	}
 
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
 	}
+
+	return lines
+
 }
 
 func doohickey(line string) {
+
 	root := []*Node{}
 
 	tokens := strings.Fields(line)
@@ -71,14 +80,15 @@ func doohickey(line string) {
 	format = strings.TrimSpace(format)
 	root = append(root, parser(tokens))
 
-	if root[0].class == "ASSIGN" {
-		fmt.Println(root[0].left.value + " = " + root[0].right.value)
-	}
+	ast := traverseAST(root)
+	fmt.Println(ast)
+
 }
 
 func HelperPreOrder(node *Node, processFunc func(v string)) {
 	if node != nil {
 		processFunc(node.value)
+		fmt.Println("traverseAST: " + node.value)
 		HelperPreOrder(node.left, processFunc)
 		HelperPreOrder(node.right, processFunc)
 	}
@@ -86,10 +96,10 @@ func HelperPreOrder(node *Node, processFunc func(v string)) {
 
 func traverseAST(root []*Node) []string {
 	var res []string
+	processFunc := func(v string) {
+		res = append(res, v)
+	}
 	for i := 0; i < len(root); i++ {
-		processFunc := func(v string) {
-			res = append(res, v)
-		}
 		HelperPreOrder(root[i], processFunc)
 	}
 	return res
@@ -196,47 +206,6 @@ func parser(tokens []string) *Node {
 		fmt.Println("Unrecognized character")
 		os.Exit(3)
 
-	}
-
-	return &newNode
-}
-
-func createNode(expression []string, format string) *Node {
-	var newNode Node
-	switch format {
-	case "TYPE IDENTIFIER":
-		fmt.Println(format)
-		newNode = Node{
-			class: "IDENTIFIER",
-			dtype: "CHAR",
-			value: expression[1],
-		}
-
-	case "IDENTIFIER ASSIGN NUMBER":
-		fmt.Println(format)
-		newNode = Node{
-			class: "ASSIGN",
-			dtype: "CHAR",
-			value: expression[1],
-			left:  createNode([]string{expression[0]}, "IDENTIFIER"),
-			right: createNode([]string{expression[2]}, "NUMBER"),
-		}
-
-	case "IDENTIFIER":
-		fmt.Println(format)
-		newNode = Node{
-			class: "IDENTIFIER",
-			dtype: "CHAR",
-			value: expression[0],
-		}
-
-	case "NUMBER":
-		fmt.Println(format)
-		newNode = Node{
-			class: "NUMBER",
-			dtype: "INT",
-			value: expression[0],
-		}
 	}
 
 	return &newNode
