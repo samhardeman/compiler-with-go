@@ -1,6 +1,8 @@
-int x
+int x 
+x = 2 + 3 * 4
 int y
+y = x + 5
 int z
-x = 5 + 5
-y = 3
-z = x + y
+z = y
+int w
+w = 3 + 3
