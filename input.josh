@@ -1,8 +1,11 @@
-int x 
-x = 2 + 3 * 4
-int y
-y = x + 5
-int z
-z = y
-int w
-w = 3 + 3
+int x;
+x = 2 + 3 * 4;
+int y;
+y = x + 5;
+int z;
+z = y;
+int w;
+w = 3 + 3;
+func add(int a, int b) {
+    print(a);
+}

@@ -6,17 +6,18 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 )
 
 type Node struct {
-	class string
-	dtype string
-	value string
-	left  *Node
-	right *Node
+	Params        []string
+	Returns       []string
+	Body          []string
+	ArrayType     string
+	ArrayElements []string
 }
 
 type Symbol struct {
@@ -31,23 +32,20 @@ func main() {
 	var inputFile string = getFlags()
 	lines := readLines(inputFile)
 
-	// Open file for writing TAC
-	tacFile, err := os.Create("output.tac")
-	if err != nil {
-		log.Fatal("Cannot create output file:", err)
-	}
-	defer tacFile.Close()
-
-	// Initialize the symbol table
-	symbolTable = make(map[string]Symbol)
+	entireCode := []string{}
 
 	// Process each line and generate TAC
 	for i := 0; i < len(lines); i++ {
-		doohickey(lines[i], tacFile)
+		lexerLines := lexer(lines[i])
+		for _, line := range lexerLines {
+			entireCode = append(entireCode, line.Type)
+		}
 	}
 
-	// Optimize the TAC file
-	optimizeTAC("output.tac", "optimized_output.tac")
+	for _, declaration := range entireCode {
+		fmt.Println(declaration)
+	}
+
 }
 
 func getFlags() string {
@@ -86,39 +84,6 @@ func readLines(inputFile string) []string {
 
 }
 
-func doohickey(line string, file *os.File) {
-	root := []*Node{}
-	tokens := strings.Fields(line)
-
-	// Parse tokens into an AST
-	root = append(root, parser(tokens))
-
-	// Generate and write TAC to the file
-	for _, astRoot := range root {
-		generateTAC(astRoot, file)
-	}
-}
-
-func HelperPreOrder(node *Node, processFunc func(v string)) {
-	if node != nil {
-		processFunc(node.value)
-		fmt.Println("traverseAST: " + node.value)
-		HelperPreOrder(node.left, processFunc)
-		HelperPreOrder(node.right, processFunc)
-	}
-}
-
-func traverseAST(root []*Node) []string {
-	var res []string
-	processFunc := func(v string) {
-		res = append(res, v)
-	}
-	for i := 0; i < len(root); i++ {
-		HelperPreOrder(root[i], processFunc)
-	}
-	return res
-}
-
 func bisect(expression []string, character string, direction string) []string {
 	index := slices.Index(expression, character)
 
@@ -145,128 +110,7 @@ func bisect(expression []string, character string, direction string) []string {
 	return tokens
 }
 
-func parser(tokens []string) *Node {
-
-	var newNode Node
-
-	numbers := strings.Split("1234567890", "")
-	letters := strings.Split("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", "")
-
-	if slices.Contains(tokens, "int") {
-		newNode = Node{
-			class: "INITIALIZE",
-			dtype: "STRING",
-			value: "int",
-		}
-
-	} else if slices.Contains(tokens, "=") {
-		newNode = Node{
-			class: "ASSIGN",
-			dtype: "CHAR",
-			value: "=",
-			left:  parser(bisect(tokens, "=", "left")),
-			right: parser(bisect(tokens, "=", "right")),
-		}
-	} else if slices.Contains(tokens, "*") {
-		newNode = Node{
-			class: "MULT",
-			dtype: "CHAR",
-			value: "*",
-			left:  parser(bisect(tokens, "*", "left")),
-			right: parser(bisect(tokens, "*", "right")),
-		}
-
-	} else if slices.Contains(tokens, "/") {
-		newNode = Node{
-			class: "DIV",
-			dtype: "CHAR",
-			value: "/",
-			left:  parser(bisect(tokens, "/", "left")),
-			right: parser(bisect(tokens, "/", "right")),
-		}
-
-	} else if slices.Contains(tokens, "+") {
-		newNode = Node{
-			class: "ADD",
-			dtype: "CHAR",
-			value: "+",
-			left:  parser(bisect(tokens, "+", "left")),
-			right: parser(bisect(tokens, "+", "right")),
-		}
-
-	} else if slices.Contains(tokens, "-") {
-		newNode = Node{
-			class: "SUB",
-			dtype: "CHAR",
-			value: "-",
-			left:  parser(bisect(tokens, "-", "left")),
-			right: parser(bisect(tokens, "-", "right")),
-		}
-
-	} else if slices.Contains(numbers, tokens[0]) {
-		newNode = Node{
-			class: "NUMBER",
-			dtype: "INT",
-			value: tokens[0],
-		}
-	} else if slices.Contains(letters, tokens[0]) {
-		newNode = Node{
-			class: "IDENTIFIER",
-			dtype: "CHAR",
-			value: tokens[0],
-		}
-
-	} else {
-		fmt.Println("Unrecognized character")
-		os.Exit(3)
-
-	}
-
-	return &newNode
-}
-
 var tempCounter int
-
-// Generates a TAC and writes it to the file
-func generateTAC(node *Node, file *os.File) string {
-	if node == nil {
-		return ""
-	}
-
-	// Traverse left and right subtrees first (post-order)
-	leftVar := generateTAC(node.left, file)
-	rightVar := generateTAC(node.right, file)
-
-	writer := bufio.NewWriter(file)
-
-	switch node.class {
-	case "ADD", "SUB", "MULT", "DIV":
-		// Generate new temporary variable for the operation result
-		temp := newTemp()
-		tacLine := fmt.Sprintf("%s = %s %s %s\n", temp, leftVar, node.value, rightVar)
-		writer.WriteString(tacLine)
-		writer.Flush() // Ensure the content is written immediately
-		return temp
-	case "ASSIGN":
-		// For assignment, simply assign the right expression to the left variable
-		tacLine := fmt.Sprintf("%s = %s\n", leftVar, rightVar)
-		writer.WriteString(tacLine)
-		writer.Flush()
-
-		// Track the symbol in the symbol table for constant propagation
-		if node.left.class == "IDENTIFIER" {
-			symbolTable[node.left.value] = Symbol{value: rightVar, dtype: node.left.dtype, isUsed: false}
-		}
-		return leftVar
-	case "NUMBER", "IDENTIFIER":
-		// Return the value of the leaf nodes (either a number or an identifier)
-		return node.value
-	case "INITIALIZE":
-	default:
-		log.Fatal("Unrecognized node type")
-	}
-	return ""
-}
 
 // Function to generate a new temporary variable
 func newTemp() string {
@@ -395,4 +239,81 @@ func optimizeTAC(inputFile string, outputFile string) {
 		writer.WriteString(line + "\n")
 	}
 	writer.Flush()
+}
+
+// Token represents a lexical token.
+type Token struct {
+	Type    string
+	Literal string
+}
+
+func splitStringInPlace(arr *[]string) {
+	// Define a regex pattern to match sequences of letters, digits, or special characters
+	pattern := regexp.MustCompile(`[a-zA-Z0-9]+|[(){}[\];,]`)
+
+	// Create a new slice to store the modified array
+	var result []string
+
+	for _, str := range *arr {
+		// Find all matches based on the regex pattern
+		matches := pattern.FindAllString(str, -1)
+		// Append the split matches to the result array
+		result = append(result, matches...)
+	}
+
+	// Replace the original array content with the new split elements
+	*arr = result
+}
+
+// Lexer (simple) to split input into tokens.
+func lexer(input string) []Token {
+	var tokens []Token
+	words := strings.Fields(input)
+
+	// Call the function to modify the array in place
+	splitStringInPlace(&words)
+
+	for _, word := range words {
+		switch word {
+		case "func":
+			tokens = append(tokens, Token{Type: "FUNC", Literal: word})
+		case "+":
+			tokens = append(tokens, Token{Type: "PLUS", Literal: word})
+		case "-":
+			tokens = append(tokens, Token{Type: "SUB", Literal: word})
+		case "*":
+			tokens = append(tokens, Token{Type: "MULT", Literal: word})
+		case "/":
+			tokens = append(tokens, Token{Type: "DIV", Literal: word})
+		case ";":
+			tokens = append(tokens, Token{Type: "SEMI", Literal: word})
+		case "=":
+			tokens = append(tokens, Token{Type: "ASSIGN", Literal: word})
+		case "{":
+			tokens = append(tokens, Token{Type: "LBRACE", Literal: word})
+		case "}":
+			tokens = append(tokens, Token{Type: "RBRACE", Literal: word})
+		case "(":
+			tokens = append(tokens, Token{Type: "LPAREN", Literal: word})
+		case ")":
+			tokens = append(tokens, Token{Type: "RPAREN", Literal: word})
+		case "[":
+			tokens = append(tokens, Token{Type: "LBRACKET", Literal: word})
+		case "]":
+			tokens = append(tokens, Token{Type: "RBRACKET", Literal: word})
+		case ",":
+			tokens = append(tokens, Token{Type: "COMMA", Literal: word})
+		default:
+			// Assume identifier, type, or literal value for simplicity
+			if strings.Contains(word, "int") || strings.Contains(word, "string") || strings.Contains(word, "[]string") {
+				tokens = append(tokens, Token{Type: "TYPE", Literal: word})
+			} else if strings.HasPrefix(word, "\"") && strings.HasSuffix(word, "\"") {
+				// Detect string literals
+				tokens = append(tokens, Token{Type: "STRING_LITERAL", Literal: word})
+			} else {
+				tokens = append(tokens, Token{Type: "IDENTIFIER", Literal: word})
+			}
+		}
+	}
+	return tokens
 }
