@@ -12,42 +12,21 @@ import (
 )
 
 type Node struct {
-	Type    string
-	DType   string
-	Value   string
-	Params  []Node
-	Returns []Node
-	Body    []Node
-	Left    *Node
-	Right   *Node
+	class string
+	dtype string
+	value string
+	left  *Node
+	right *Node
 }
 
 type Symbol struct {
-	dtype  string
-	value  string
-	isUsed bool
+	dtype string
+	value string
 }
-
-var symbolTable map[string]Symbol
 
 func main() {
 	var inputFile string = getFlags()
-	lines := readLines(inputFile)
-
-	entireCode := []string{}
-
-	// Process each line and generate TAC
-	for _, line := range lines {
-		lexerLines := lexer(line)
-		for _, lexedLine := range lexerLines {
-			entireCode = append(entireCode, lexedLine.Type)
-		}
-	}
-
-	for _, declaration := range entireCode {
-		fmt.Println(declaration)
-	}
-
+	readLines(inputFile)
 }
 
 func getFlags() string {
@@ -60,9 +39,7 @@ func getFlags() string {
 	return string(*inputFile)
 }
 
-func readLines(inputFile string) []string {
-	lines := []string{}
-
+func readLines(inputFile string) {
 	// open file
 	f, err := os.Open(inputFile)
 	if err != nil {
@@ -75,15 +52,48 @@ func readLines(inputFile string) []string {
 	scanner := bufio.NewScanner(f)
 
 	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
+		doohickey(scanner.Text())
 	}
 
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
 	}
+}
 
-	return lines
+func doohickey(line string) {
+	root := []*Node{}
 
+	tokens := splitString(line)
+
+	format := ""
+
+	fmt.Println(tokens)
+
+	format = strings.TrimSpace(format)
+	root = append(root, parser(tokens))
+
+	if root[0].class == "ASSIGN" {
+		fmt.Println(root[0].left.value + " = " + root[0].right.value)
+	}
+}
+
+func HelperPreOrder(node *Node, processFunc func(v string)) {
+	if node != nil {
+		processFunc(node.value)
+		HelperPreOrder(node.left, processFunc)
+		HelperPreOrder(node.right, processFunc)
+	}
+}
+
+func traverseAST(root []*Node) []string {
+	var res []string
+	for i := 0; i < len(root); i++ {
+		processFunc := func(v string) {
+			res = append(res, v)
+		}
+		HelperPreOrder(root[i], processFunc)
+	}
+	return res
 }
 
 func bisect(expression []string, character string, direction string) []string {
@@ -112,88 +122,130 @@ func bisect(expression []string, character string, direction string) []string {
 	return tokens
 }
 
-var tempCounter int
+func parser(tokens []string) *Node {
 
-// Function to generate a new temporary variable
-func newTemp() string {
-	tempCounter++
-	return fmt.Sprintf("t%d", tempCounter)
-}
+	var newNode Node
 
-// Token represents a lexical token.
-type Token struct {
-	Type    string
-	Literal string
-}
+	numbers := strings.Split("1234567890", "")
+	letters := strings.Split("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", "")
 
-func splitStringInPlace(arr *[]string) {
-	// Define a regex pattern to match sequences of letters, digits, or special characters
-	pattern := regexp.MustCompile(`[a-zA-Z0-9]+|[(){}[\];,+\-*/%=<>!]`)
+	if slices.Contains(tokens, "int") {
+		newNode = Node{
+			class: "INITIALIZE",
+			dtype: "STRING",
+			value: "int",
+		}
 
-	// Create a new slice to store the modified array
-	var result []string
+	} else if slices.Contains(tokens, "=") {
+		newNode = Node{
+			class: "ASSIGN",
+			dtype: "CHAR",
+			value: "=",
+			left:  parser(bisect(tokens, "=", "left")),
+			right: parser(bisect(tokens, "=", "right")),
+		}
+	} else if slices.Contains(tokens, "*") {
+		newNode = Node{
+			class: "MULT",
+			dtype: "CHAR",
+			value: "*",
+			left:  parser(bisect(tokens, "*", "left")),
+			right: parser(bisect(tokens, "*", "right")),
+		}
 
-	for _, str := range *arr {
-		// Find all matches based on the regex pattern
-		matches := pattern.FindAllString(str, -1)
-		// Append the split matches to the result array
-		result = append(result, matches...)
+	} else if slices.Contains(tokens, "/") {
+		newNode = Node{
+			class: "DIV",
+			dtype: "CHAR",
+			value: "/",
+			left:  parser(bisect(tokens, "/", "left")),
+			right: parser(bisect(tokens, "/", "right")),
+		}
+
+	} else if slices.Contains(tokens, "+") {
+		newNode = Node{
+			class: "ADD",
+			dtype: "CHAR",
+			value: "+",
+			left:  parser(bisect(tokens, "+", "left")),
+			right: parser(bisect(tokens, "+", "right")),
+		}
+
+	} else if slices.Contains(tokens, "-") {
+		newNode = Node{
+			class: "SUB",
+			dtype: "CHAR",
+			value: "-",
+			left:  parser(bisect(tokens, "-", "left")),
+			right: parser(bisect(tokens, "-", "right")),
+		}
+
+	} else if slices.Contains(numbers, tokens[0]) {
+		newNode = Node{
+			class: "NUMBER",
+			dtype: "INT",
+			value: tokens[0],
+		}
+	} else if slices.Contains(letters, tokens[0]) {
+		newNode = Node{
+			class: "IDENTIFIER",
+			dtype: "CHAR",
+			value: tokens[0],
+		}
+
+	} else if slices.Contains(tokens, ";") {
+
+	} else {
+		fmt.Println("Unrecognized character")
+		os.Exit(3)
+
 	}
 
-	// Replace the original array content with the new split elements
-	*arr = result
+	return &newNode
 }
 
-// Lexer (simple) to split input into tokens.
-func lexer(input string) []Token {
+func createNode(expression []string, format string) *Node {
+	var newNode Node
+	switch format {
+	case "TYPE IDENTIFIER":
+		fmt.Println(format)
+		newNode = Node{
+			class: "IDENTIFIER",
+			dtype: "CHAR",
+			value: expression[1],
+		}
 
-	var tokens []Token
-	words := strings.Fields(input)
+	case "IDENTIFIER ASSIGN NUMBER":
+		fmt.Println(format)
+		newNode = Node{
+			class: "ASSIGN",
+			dtype: "CHAR",
+			value: expression[1],
+			left:  createNode([]string{expression[0]}, "IDENTIFIER"),
+			right: createNode([]string{expression[2]}, "NUMBER"),
+		}
 
-	// Call the function to modify the array in place
-	splitStringInPlace(&words)
+	case "IDENTIFIER":
+		fmt.Println(format)
+		newNode = Node{
+			class: "IDENTIFIER",
+			dtype: "CHAR",
+			value: expression[0],
+		}
 
-	for _, word := range words {
-		switch word {
-		case "func":
-			tokens = append(tokens, Token{Type: "FUNC", Literal: word})
-		case "+":
-			tokens = append(tokens, Token{Type: "PLUS", Literal: word})
-		case "-":
-			tokens = append(tokens, Token{Type: "SUB", Literal: word})
-		case "*":
-			tokens = append(tokens, Token{Type: "MULT", Literal: word})
-		case "/":
-			tokens = append(tokens, Token{Type: "DIV", Literal: word})
-		case ";":
-			tokens = append(tokens, Token{Type: "SEMI", Literal: word})
-		case "=":
-			tokens = append(tokens, Token{Type: "ASSIGN", Literal: word})
-		case "{":
-			tokens = append(tokens, Token{Type: "LBRACE", Literal: word})
-		case "}":
-			tokens = append(tokens, Token{Type: "RBRACE", Literal: word})
-		case "(":
-			tokens = append(tokens, Token{Type: "LPAREN", Literal: word})
-		case ")":
-			tokens = append(tokens, Token{Type: "RPAREN", Literal: word})
-		case "[":
-			tokens = append(tokens, Token{Type: "LBRACKET", Literal: word})
-		case "]":
-			tokens = append(tokens, Token{Type: "RBRACKET", Literal: word})
-		case ",":
-			tokens = append(tokens, Token{Type: "COMMA", Literal: word})
-		default:
-			// Assume identifier, type, or literal value for simplicity
-			if strings.Contains(word, "int") || strings.Contains(word, "string") || strings.Contains(word, "[]string") {
-				tokens = append(tokens, Token{Type: "TYPE", Literal: word})
-			} else if strings.HasPrefix(word, "\"") && strings.HasSuffix(word, "\"") {
-				// Detect string literals
-				tokens = append(tokens, Token{Type: "STRING_LITERAL", Literal: word})
-			} else {
-				tokens = append(tokens, Token{Type: "IDENTIFIER", Literal: word})
-			}
+	case "NUMBER":
+		fmt.Println(format)
+		newNode = Node{
+			class: "NUMBER",
+			dtype: "INT",
+			value: expression[0],
 		}
 	}
-	return tokens
+
+	return &newNode
+}
+
+func splitString(input string) []string {
+	pattern := regexp.MustCompile(`[a-zA-Z0-9]+|[(){}[\];,+\-*/%=<>!]`)
+	return pattern.FindAllString(input, -1)
 }
