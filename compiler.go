@@ -132,7 +132,7 @@ func parseDecl(tokens []string, lineNumber int) *Node {
 
 	if len(tokens) > 2 {
 		if tokens[2] == "=" {
-			newNode.Right = parseGeneric(tokens[2:], lineNumber)
+			newNode.Right = parseGeneric(tokens[1:], lineNumber)
 		}
 	}
 

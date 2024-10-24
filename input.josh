@@ -1,4 +1,4 @@
-int x
+int x = 5
 x = 2 + 3 * 4
 int y
 y = x + 5
