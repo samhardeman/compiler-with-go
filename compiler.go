@@ -29,8 +29,12 @@ type Symbol struct {
 }
 
 func main() {
+	root := Node{}
 	var inputFile string = getFlags()
-	readLines(inputFile)
+	code := readLines(inputFile)
+	newRoot := parse(code, root)
+	ast := traverseAST(newRoot.Body)
+	fmt.Println(ast)
 }
 
 func getFlags() string {
@@ -71,31 +75,47 @@ func readLines(inputFile string) []string {
 }
 
 // Parse (big slay)
-func parse(code []string) {
-	root := Node{}
-	body := root.Body
+func parse(code []string, root Node) Node {
+	body := []*Node{}
 
 	openBrace := 0
 
 	// iterate through code
 	for i := 0; i < len(code); i++ {
 		line := i
+
 		// splits line into tokens
 		tokens := strings.Fields(code[line])
+		splitStringInPlace(&tokens)
 
-		if tokens[0] == "func" {
-			funcNode, funcBrace := parseFunc(tokens, line)
+		if tokens[0] == "}" {
+			if openBrace == 1 {
+				openBrace--
+			} else {
+				fmt.Println("Expected \"something else entirely\" got " + tokens[0] + " on line " + strconv.Itoa(line-1))
+				os.Exit(3)
+			}
+		} else if tokens[0] == "func" {
+			funcNode, funcBrace := parseFunc(tokens, line-1)
 			openBrace = funcBrace
 			body = append(body, funcNode)
 		} else if tokens[0] == "int" {
-			parseDecl(tokens, line)
-		} else if openBrace != 1 {
-			body[len(body)].Body = append(body[len(body)].Body, parseGeneric(tokens, line))
+			parseDecl(tokens, line-1)
+		} else if len(tokens) > 1 && tokens[1] == "(" && openBrace == 1 {
+			body = append(body, parseFunctionCall(tokens, line))
+		} else if openBrace == 1 {
+			body[len(body)-1].Body = append(body[len(body)-1].Body, parseGeneric(tokens, line-1))
+		} else if len(tokens) > 1 && tokens[1] == "(" {
+			body = append(body, parseFunctionCall(tokens, line))
 		} else {
 			body = append(body, parseGeneric(tokens, line))
 		}
 
 	}
+
+	root.Body = body
+
+	return root
 }
 
 func parseDecl(tokens []string, lineNumber int) *Node {
@@ -110,8 +130,10 @@ func parseDecl(tokens []string, lineNumber int) *Node {
 		os.Exit(3)
 	}
 
-	if tokens[2] == "=" {
-		newNode.Right = parseGeneric(tokens[2:], lineNumber)
+	if len(tokens) > 2 {
+		if tokens[2] == "=" {
+			newNode.Right = parseGeneric(tokens[2:], lineNumber)
+		}
 	}
 
 	return &newNode
@@ -152,7 +174,7 @@ func parseFunc(tokens []string, lineNumber int) (*Node, int) {
 		params := tokens[2:closeParenIndex]
 
 		for i := 1; i < (len(params) + 1/3); i += 3 {
-			newNode.Params = append(newNode.Params, parseDecl(params[i:i+1], lineNumber))
+			newNode.Params = append(newNode.Params, parseDecl(params[i:i+2], lineNumber))
 		}
 	}
 
@@ -167,6 +189,37 @@ func parseFunc(tokens []string, lineNumber int) (*Node, int) {
 
 	return &newNode, openBrace
 
+}
+
+func parseFunctionCall(tokens []string, lineNumber int) *Node {
+	newNode := Node{
+		Type:  "FUNCTION_CALL",
+		Value: tokens[0], // The function name (e.g., 'print')
+	}
+
+	// Expect the second token to be an opening parenthesis
+	if tokens[1] != "(" {
+		fmt.Println("Expected \"(\" after function name, got " + tokens[1] + " on line " + strconv.Itoa(lineNumber))
+		os.Exit(3)
+	}
+
+	// Find the closing parenthesis
+	closeParenIndex := slices.Index(tokens, ")")
+	if closeParenIndex == -1 {
+		fmt.Println("Expected \")\" to close function call on line " + strconv.Itoa(lineNumber))
+		os.Exit(3)
+	}
+
+	// Extract the arguments between parentheses
+	args := tokens[2:closeParenIndex]
+
+	// Parse each argument and add it to the function's Params
+	for _, arg := range args {
+		argTokens := strings.Fields(arg) // Split arguments in case of complex expressions
+		newNode.Params = append(newNode.Params, parseGeneric(argTokens, lineNumber))
+	}
+
+	return &newNode
 }
 
 // Validates identifiers (variable names, function names, etc.)
@@ -194,30 +247,11 @@ func splitStringInPlace(arr *[]string) {
 	*arr = result
 }
 
-func rootManager(line string) {
-	root := Node{}
-
-	root.Type = "ROOT"
-
-	tokens := strings.Fields(line)
-
-	format := ""
-
-	fmt.Println(tokens)
-
-	format = strings.TrimSpace(format)
-	root.Body = append(root.Body, parser(tokens))
-
-	if root.Body[0].Type == "ASSIGN" {
-		fmt.Println(root.Body[0].Left.Value + " = " + root.Body[0].Right.Value)
-	}
-}
-
 func HelperPreOrder(node *Node, processFunc func(v string)) {
 	if node != nil {
-		processFunc(node.value)
-		HelperPreOrder(node.left, processFunc)
-		HelperPreOrder(node.right, processFunc)
+		processFunc(node.Value)
+		HelperPreOrder(node.Left, processFunc)
+		HelperPreOrder(node.Right, processFunc)
 	}
 }
 
@@ -267,105 +301,63 @@ func parseGeneric(tokens []string, lineNumber int) *Node {
 
 	if slices.Contains(tokens, "=") {
 		newNode = Node{
-			class: "ASSIGN",
-			dtype: "CHAR",
-			value: "=",
-			left:  parseGeneric(bisect(tokens, "=", "left")),
-			right: parseGeneric(bisect(tokens, "=", "right")),
+			Type:  "ASSIGN",
+			DType: "CHAR",
+			Value: "=",
+			Left:  parseGeneric(bisect(tokens, "=", "left"), lineNumber),
+			Right: parseGeneric(bisect(tokens, "=", "right"), lineNumber),
 		}
 	} else if slices.Contains(tokens, "*") {
 		newNode = Node{
-			class: "MULT",
-			dtype: "CHAR",
-			value: "*",
-			left:  parseGeneric(bisect(tokens, "*", "left")),
-			right: parseGeneric(bisect(tokens, "*", "right")),
+			Type:  "MULT",
+			DType: "CHAR",
+			Value: "*",
+			Left:  parseGeneric(bisect(tokens, "*", "left"), lineNumber),
+			Right: parseGeneric(bisect(tokens, "*", "right"), lineNumber),
 		}
 
 	} else if slices.Contains(tokens, "/") {
 		newNode = Node{
-			class: "DIV",
-			dtype: "CHAR",
-			value: "/",
-			left:  parseGeneric(bisect(tokens, "/", "left")),
-			right: parseGeneric(bisect(tokens, "/", "right")),
+			Type:  "DIV",
+			DType: "CHAR",
+			Value: "/",
+			Left:  parseGeneric(bisect(tokens, "/", "left"), lineNumber),
+			Right: parseGeneric(bisect(tokens, "/", "right"), lineNumber),
 		}
 
 	} else if slices.Contains(tokens, "+") {
 		newNode = Node{
-			class: "ADD",
-			dtype: "CHAR",
-			value: "+",
-			left:  parseGeneric(bisect(tokens, "+", "left")),
-			right: parseGeneric(bisect(tokens, "+", "right")),
+			Type:  "ADD",
+			DType: "CHAR",
+			Value: "+",
+			Left:  parseGeneric(bisect(tokens, "+", "left"), lineNumber),
+			Right: parseGeneric(bisect(tokens, "+", "right"), lineNumber),
 		}
 
 	} else if slices.Contains(tokens, "-") {
 		newNode = Node{
-			class: "SUB",
-			dtype: "CHAR",
-			value: "-",
-			left:  parseGeneric(bisect(tokens, "-", "left")),
-			right: parseGeneric(bisect(tokens, "-", "right")),
+			Type:  "SUB",
+			DType: "CHAR",
+			Value: "-",
+			Left:  parseGeneric(bisect(tokens, "-", "left"), lineNumber),
+			Right: parseGeneric(bisect(tokens, "-", "right"), lineNumber),
 		}
-
 	} else if slices.Contains(numbers, tokens[0]) {
 		newNode = Node{
-			class: "NUMBER",
-			dtype: "INT",
-			value: tokens[0],
+			Type:  "NUMBER",
+			DType: "INT",
+			Value: tokens[0],
 		}
 	} else if slices.Contains(letters, tokens[0]) {
 		newNode = Node{
-			class: "IDENTIFIER",
-			dtype: "CHAR",
-			value: tokens[0],
+			Type:  "IDENTIFIER",
+			DType: "CHAR",
+			Value: tokens[0],
 		}
 	} else {
 		fmt.Println("Unrecognized character")
 		os.Exit(3)
 
-	}
-
-	return &newNode
-}
-
-func createNode(expression []string, format string) *Node {
-	var newNode Node
-	switch format {
-	case "TYPE IDENTIFIER":
-		fmt.Println(format)
-		newNode = Node{
-			class: "IDENTIFIER",
-			dtype: "CHAR",
-			value: expression[1],
-		}
-
-	case "IDENTIFIER ASSIGN NUMBER":
-		fmt.Println(format)
-		newNode = Node{
-			class: "ASSIGN",
-			dtype: "CHAR",
-			value: expression[1],
-			left:  createNode([]string{expression[0]}, "IDENTIFIER"),
-			right: createNode([]string{expression[2]}, "NUMBER"),
-		}
-
-	case "IDENTIFIER":
-		fmt.Println(format)
-		newNode = Node{
-			class: "IDENTIFIER",
-			dtype: "CHAR",
-			value: expression[0],
-		}
-
-	case "NUMBER":
-		fmt.Println(format)
-		newNode = Node{
-			class: "NUMBER",
-			dtype: "INT",
-			value: expression[0],
-		}
 	}
 
 	return &newNode

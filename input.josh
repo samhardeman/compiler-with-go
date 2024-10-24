@@ -1,12 +1,14 @@
-int x;
-x = 2 + 3 * 4;
-int y;
-y = x + 5;
-int z;
-z = y;
-int w;
-w = 3 * 3;
+int x
+x = 2 + 3 * 4
+int y
+y = x + 5
+int z
+z = y
+int w
+w = 3 * 3
 func sum(int a, int b) {
-    a = a + b;
-    print(a);
+    a = a + b
+    print(a)
+    b = a + 2
 }
+w = w + x
