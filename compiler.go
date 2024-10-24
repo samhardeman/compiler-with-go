@@ -26,38 +26,65 @@ type Symbol struct {
 
 func main() {
 	var inputFile string = getFlags()
-	readLines(inputFile)
+	content := readFile(inputFile)
+	tokens := splitContent(content)
+
+	for _, token := range tokens {
+		doohickey(token)
+	}
 }
 
 func getFlags() string {
 	inputFile := flag.String("file", "", "")
 	flag.Parse()
-	if string(*inputFile) == "" {
+	if *inputFile == "" {
 		fmt.Printf("no file to compile provided")
 		os.Exit(3)
 	}
-	return string(*inputFile)
+	return *inputFile
 }
 
-func readLines(inputFile string) {
-	// open file
+// readFile reads the entire content of the file into a single string.
+func readFile(inputFile string) string {
+	// Open the file
 	f, err := os.Open(inputFile)
 	if err != nil {
 		log.Fatal(err)
 	}
-	// remember to close the file at the end of the program
 	defer f.Close()
 
-	// read the file line by line using scanner
+	// Use a scanner to read the file content
+	var content strings.Builder
 	scanner := bufio.NewScanner(f)
 
 	for scanner.Scan() {
-		doohickey(scanner.Text())
+		content.WriteString(scanner.Text() + "\n") // Append each line with a newline
 	}
 
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
 	}
+
+	return content.String() // Return the full content as a string
+}
+
+// splitContent splits the input string at function declarations and semicolons.
+func splitContent(content string) []string {
+	// Regular expression to match function declarations first, then semicolons
+	pattern := regexp.MustCompile(`(?m)(func\s*\([^{]*\{[^}]*\}|;)\s*`)
+	// Split the content based on the pattern
+	tokens := pattern.Split(content, -1)
+
+	// Clean up tokens and remove any empty strings
+	var cleanedTokens []string
+	for _, token := range tokens {
+		token = strings.TrimSpace(token)
+		if token != "" {
+			cleanedTokens = append(cleanedTokens, token)
+		}
+	}
+
+	return cleanedTokens
 }
 
 func doohickey(line string) {
