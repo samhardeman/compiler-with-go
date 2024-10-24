@@ -8,15 +8,19 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 )
 
 type Node struct {
-	class string
-	dtype string
-	value string
-	left  *Node
-	right *Node
+	Type    string
+	DType   string
+	Value   string
+	Params  []*Node
+	Returns []*Node
+	Body    []*Node
+	Left    *Node
+	Right   *Node
 }
 
 type Symbol struct {
@@ -26,81 +30,186 @@ type Symbol struct {
 
 func main() {
 	var inputFile string = getFlags()
-	content := readFile(inputFile)
-	tokens := splitContent(content)
-
-	for _, token := range tokens {
-		doohickey(token)
-	}
+	readLines(inputFile)
 }
 
 func getFlags() string {
 	inputFile := flag.String("file", "", "")
 	flag.Parse()
-	if *inputFile == "" {
+	if string(*inputFile) == "" {
 		fmt.Printf("no file to compile provided")
 		os.Exit(3)
 	}
-	return *inputFile
+	return string(*inputFile)
 }
 
-// readFile reads the entire content of the file into a single string.
-func readFile(inputFile string) string {
-	// Open the file
+// read lines
+func readLines(inputFile string) []string {
+	code := []string{}
+	// open file
 	f, err := os.Open(inputFile)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// close please
 	defer f.Close()
 
-	// Use a scanner to read the file content
-	var content strings.Builder
+	// read the file line by line using scanner
 	scanner := bufio.NewScanner(f)
 
+	// for each line, append the line to the code array
 	for scanner.Scan() {
-		content.WriteString(scanner.Text() + "\n") // Append each line with a newline
+		code = append(code, scanner.Text())
 	}
 
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
 	}
 
-	return content.String() // Return the full content as a string
+	return code
 }
 
-// splitContent splits the input string at function declarations and semicolons.
-func splitContent(content string) []string {
-	// Regular expression to match function declarations first, then semicolons
-	pattern := regexp.MustCompile(`(?m)(func\s*\([^{]*\{[^}]*\}|;)\s*`)
-	// Split the content based on the pattern
-	tokens := pattern.Split(content, -1)
+// Parse (big slay)
+func parse(code []string) {
+	root := Node{}
+	body := root.Body
 
-	// Clean up tokens and remove any empty strings
-	var cleanedTokens []string
-	for _, token := range tokens {
-		token = strings.TrimSpace(token)
-		if token != "" {
-			cleanedTokens = append(cleanedTokens, token)
+	openBrace := 0
+
+	// iterate through code
+	for i := 0; i < len(code); i++ {
+		line := i
+		// splits line into tokens
+		tokens := strings.Fields(code[line])
+
+		if tokens[0] == "func" {
+			funcNode, funcBrace := parseFunc(tokens, line)
+			openBrace = funcBrace
+			body = append(body, funcNode)
+		} else if tokens[0] == "int" {
+			parseDecl(tokens, line)
+		} else if openBrace != 1 {
+			body[len(body)].Body = append(body[len(body)].Body, parseGeneric(tokens, line))
+		} else {
+			body = append(body, parseGeneric(tokens, line))
+		}
+
+	}
+}
+
+func parseDecl(tokens []string, lineNumber int) *Node {
+	newNode := Node{
+		Type:  "DECLARATION",
+		DType: tokens[0],
+		Value: tokens[1],
+	}
+
+	if !isIdentifier(tokens[1]) {
+		fmt.Println("Expected variable name declaration got " + tokens[1] + " on line " + strconv.Itoa(lineNumber))
+		os.Exit(3)
+	}
+
+	if tokens[2] == "=" {
+		newNode.Right = parseGeneric(tokens[2:], lineNumber)
+	}
+
+	return &newNode
+}
+
+// Parse Function Declarations
+func parseFunc(tokens []string, lineNumber int) (*Node, int) {
+	var newNode Node
+	splitStringInPlace(&tokens)
+	openParen, openBrace := 0, 0
+
+	newNode.Type = "FUNCTION"
+
+	if !isIdentifier(tokens[1]) {
+		fmt.Println("Expected function name declaration got " + tokens[1] + " on line " + strconv.Itoa(lineNumber))
+		os.Exit(3)
+	} else {
+		newNode.Value = tokens[1]
+	}
+
+	if tokens[2] != "(" {
+		fmt.Println("Expected \"(\" got " + tokens[2] + " on line " + strconv.Itoa(lineNumber))
+		os.Exit(3)
+	} else {
+		openParen++
+	}
+
+	closeParenIndex := slices.Index(tokens, ")")
+
+	if closeParenIndex == -1 {
+		fmt.Println("Expected \")\" got " + tokens[2] + " on line " + strconv.Itoa(lineNumber))
+		os.Exit(3)
+	} else {
+		openParen--
+	}
+
+	if closeParenIndex != 3 {
+		params := tokens[2:closeParenIndex]
+
+		for i := 1; i < (len(params) + 1/3); i += 3 {
+			newNode.Params = append(newNode.Params, parseDecl(params[i:i+1], lineNumber))
 		}
 	}
 
-	return cleanedTokens
+	if tokens[closeParenIndex+1] == "int" {
+		newNode.DType = "int"
+	} else if tokens[closeParenIndex+1] != "{" {
+		fmt.Println("Expected \"{\" got " + tokens[closeParenIndex+1] + " on line " + strconv.Itoa(lineNumber))
+		os.Exit(3)
+	} else {
+		openBrace++
+	}
+
+	return &newNode, openBrace
+
 }
 
-func doohickey(line string) {
-	root := []*Node{}
+// Validates identifiers (variable names, function names, etc.)
+func isIdentifier(word string) bool {
+	validIdentifier := regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
+	return validIdentifier.MatchString(word)
+}
 
-	tokens := splitString(line)
+// SplitStringInPlace splits mixed strings (like "add(int" or "b)") in the array in place
+func splitStringInPlace(arr *[]string) {
+	// Define a regex pattern to match sequences of letters, digits, or special characters, including arithmetic operators and equal signs
+	pattern := regexp.MustCompile(`[a-zA-Z0-9]+|[(){}[\];,+\-*/%=<>!]`)
+
+	// Create a new slice to store the modified array
+	var result []string
+
+	for _, str := range *arr {
+		// Find all matches based on the regex pattern
+		matches := pattern.FindAllString(str, -1)
+		// Append the split matches to the result array
+		result = append(result, matches...)
+	}
+
+	// Replace the original array content with the new split elements
+	*arr = result
+}
+
+func rootManager(line string) {
+	root := Node{}
+
+	root.Type = "ROOT"
+
+	tokens := strings.Fields(line)
 
 	format := ""
 
 	fmt.Println(tokens)
 
 	format = strings.TrimSpace(format)
-	root = append(root, parser(tokens))
+	root.Body = append(root.Body, parser(tokens))
 
-	if root[0].class == "ASSIGN" {
-		fmt.Println(root[0].left.value + " = " + root[0].right.value)
+	if root.Body[0].Type == "ASSIGN" {
+		fmt.Println(root.Body[0].Left.Value + " = " + root.Body[0].Right.Value)
 	}
 }
 
@@ -149,35 +258,28 @@ func bisect(expression []string, character string, direction string) []string {
 	return tokens
 }
 
-func parser(tokens []string) *Node {
+func parseGeneric(tokens []string, lineNumber int) *Node {
 
 	var newNode Node
 
 	numbers := strings.Split("1234567890", "")
 	letters := strings.Split("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", "")
 
-	if slices.Contains(tokens, "int") {
-		newNode = Node{
-			class: "INITIALIZE",
-			dtype: "STRING",
-			value: "int",
-		}
-
-	} else if slices.Contains(tokens, "=") {
+	if slices.Contains(tokens, "=") {
 		newNode = Node{
 			class: "ASSIGN",
 			dtype: "CHAR",
 			value: "=",
-			left:  parser(bisect(tokens, "=", "left")),
-			right: parser(bisect(tokens, "=", "right")),
+			left:  parseGeneric(bisect(tokens, "=", "left")),
+			right: parseGeneric(bisect(tokens, "=", "right")),
 		}
 	} else if slices.Contains(tokens, "*") {
 		newNode = Node{
 			class: "MULT",
 			dtype: "CHAR",
 			value: "*",
-			left:  parser(bisect(tokens, "*", "left")),
-			right: parser(bisect(tokens, "*", "right")),
+			left:  parseGeneric(bisect(tokens, "*", "left")),
+			right: parseGeneric(bisect(tokens, "*", "right")),
 		}
 
 	} else if slices.Contains(tokens, "/") {
@@ -185,8 +287,8 @@ func parser(tokens []string) *Node {
 			class: "DIV",
 			dtype: "CHAR",
 			value: "/",
-			left:  parser(bisect(tokens, "/", "left")),
-			right: parser(bisect(tokens, "/", "right")),
+			left:  parseGeneric(bisect(tokens, "/", "left")),
+			right: parseGeneric(bisect(tokens, "/", "right")),
 		}
 
 	} else if slices.Contains(tokens, "+") {
@@ -194,8 +296,8 @@ func parser(tokens []string) *Node {
 			class: "ADD",
 			dtype: "CHAR",
 			value: "+",
-			left:  parser(bisect(tokens, "+", "left")),
-			right: parser(bisect(tokens, "+", "right")),
+			left:  parseGeneric(bisect(tokens, "+", "left")),
+			right: parseGeneric(bisect(tokens, "+", "right")),
 		}
 
 	} else if slices.Contains(tokens, "-") {
@@ -203,8 +305,8 @@ func parser(tokens []string) *Node {
 			class: "SUB",
 			dtype: "CHAR",
 			value: "-",
-			left:  parser(bisect(tokens, "-", "left")),
-			right: parser(bisect(tokens, "-", "right")),
+			left:  parseGeneric(bisect(tokens, "-", "left")),
+			right: parseGeneric(bisect(tokens, "-", "right")),
 		}
 
 	} else if slices.Contains(numbers, tokens[0]) {
@@ -219,9 +321,6 @@ func parser(tokens []string) *Node {
 			dtype: "CHAR",
 			value: tokens[0],
 		}
-
-	} else if slices.Contains(tokens, ";") {
-
 	} else {
 		fmt.Println("Unrecognized character")
 		os.Exit(3)
@@ -270,9 +369,4 @@ func createNode(expression []string, format string) *Node {
 	}
 
 	return &newNode
-}
-
-func splitString(input string) []string {
-	pattern := regexp.MustCompile(`[a-zA-Z0-9]+|[(){}[\];,+\-*/%=<>!]`)
-	return pattern.FindAllString(input, -1)
 }
