@@ -33,8 +33,7 @@ func main() {
 	var inputFile string = getFlags()
 	code := readLines(inputFile)
 	newRoot := parse(code, root)
-	ast := traverseAST(newRoot.Body)
-	fmt.Println(ast)
+	traverseAST(newRoot.Body)
 }
 
 func getFlags() string {
@@ -96,19 +95,36 @@ func parse(code []string, root Node) Node {
 				os.Exit(3)
 			}
 		} else if tokens[0] == "func" {
-			funcNode, funcBrace := parseFunc(tokens, line-1)
+			funcNode, funcBrace := parseFunc(tokens, line+1)
 			openBrace = funcBrace
 			body = append(body, funcNode)
 		} else if tokens[0] == "int" {
-			parseDecl(tokens, line-1)
+			body = append(body, parseDecl(tokens, line+1))
 		} else if len(tokens) > 1 && tokens[1] == "(" && openBrace == 1 {
 			body = append(body, parseFunctionCall(tokens, line))
 		} else if openBrace == 1 {
-			body[len(body)-1].Body = append(body[len(body)-1].Body, parseGeneric(tokens, line-1))
+			body[len(body)-1].Body = append(body[len(body)-1].Body, parseGeneric(tokens, line+1))
 		} else if len(tokens) > 1 && tokens[1] == "(" {
 			body = append(body, parseFunctionCall(tokens, line))
 		} else {
-			body = append(body, parseGeneric(tokens, line))
+			newNode := parseGeneric(tokens, line+1)
+			linked := false
+
+			for i := 0; i < len(body); i++ {
+				if body[i].Value == newNode.Left.Value {
+					body[i].Right = newNode
+					linked = true
+					break
+				} else {
+					linked = false
+				}
+			}
+
+			if !linked {
+				fmt.Println("Undeclared variable assignment: " + tokens[0] + " " + tokens[1] + " on line " + strconv.Itoa(line+1))
+				os.Exit(3)
+			}
+
 		}
 
 	}
@@ -145,7 +161,7 @@ func parseFunc(tokens []string, lineNumber int) (*Node, int) {
 	splitStringInPlace(&tokens)
 	openParen, openBrace := 0, 0
 
-	newNode.Type = "FUNCTION"
+	newNode.Type = "FUNCTION_DECL"
 
 	if !isIdentifier(tokens[1]) {
 		fmt.Println("Expected function name declaration got " + tokens[1] + " on line " + strconv.Itoa(lineNumber))
@@ -222,6 +238,14 @@ func parseFunctionCall(tokens []string, lineNumber int) *Node {
 	return &newNode
 }
 
+func parseArray(tokens []string, lineNumber int) *Node {
+	var newNode Node
+
+	newNode.DType = tokens[0] + tokens[1] + tokens[2]
+
+	return &newNode
+}
+
 // Validates identifiers (variable names, function names, etc.)
 func isIdentifier(word string) bool {
 	validIdentifier := regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
@@ -247,23 +271,60 @@ func splitStringInPlace(arr *[]string) {
 	*arr = result
 }
 
-func HelperPreOrder(node *Node, processFunc func(v string)) {
-	if node != nil {
-		processFunc(node.Value)
-		HelperPreOrder(node.Left, processFunc)
-		HelperPreOrder(node.Right, processFunc)
+func traverseAST(root []*Node) {
+	for i := 0; i < len(root); i++ {
+		printNode(root[i], "", true)
 	}
 }
 
-func traverseAST(root []*Node) []string {
-	var res []string
-	for i := 0; i < len(root); i++ {
-		processFunc := func(v string) {
-			res = append(res, v)
-		}
-		HelperPreOrder(root[i], processFunc)
+func printNode(node *Node, prefix string, isTail bool) {
+	// Construct the current node's details (Type, DType, Value)
+	nodeRepresentation := fmt.Sprintf("%s [Type: %s, DType: %s, Value: %s]", node.Value, node.Type, node.DType, node.Value)
+
+	// Print the node, with graphical tree branches (└── or ├──)
+	fmt.Printf("%s%s%s\n", prefix, getBranch(isTail), nodeRepresentation)
+
+	// Prepare the prefix for children
+	newPrefix := prefix
+	if isTail {
+		newPrefix += "    " // For the last child, indent
+	} else {
+		newPrefix += "│   " // For other children, continue the branch
 	}
-	return res
+
+	// Handle Params, if any
+	if len(node.Params) > 0 {
+		fmt.Println(newPrefix + "Params:")
+		for i := 0; i < len(node.Params); i++ {
+			printNode(node.Params[i], newPrefix, i == len(node.Params)-1)
+		}
+	}
+
+	// Handle Body, if any
+	if len(node.Body) > 0 {
+		fmt.Println(newPrefix + "Body:")
+		for i := 0; i < len(node.Body); i++ {
+			printNode(node.Body[i], newPrefix, i == len(node.Body)-1)
+		}
+	}
+
+	// Handle Left and Right children (for operations like +, -, *, /)
+	if node.Left != nil {
+		fmt.Println(newPrefix + "Left:")
+		printNode(node.Left, newPrefix, false)
+	}
+	if node.Right != nil {
+		fmt.Println(newPrefix + "Right:")
+		printNode(node.Right, newPrefix, true)
+	}
+}
+
+// getBranch returns the appropriate branch characters for the tree
+func getBranch(isTail bool) string {
+	if isTail {
+		return "└── "
+	}
+	return "├── "
 }
 
 func bisect(expression []string, character string, direction string) []string {
