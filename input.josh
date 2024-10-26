@@ -1,6 +1,12 @@
-int a = 5
-int b = 2
+int a
+int b = 5
+int z = 3
+a = 2
 func sum(int a, int b) {
-    int z = a + b
+    int c = b + a
+    c = z + a
 }
-sum(a, b)
+z = a + b
+sum(z, b)
+[]int d = {1, 2, 3}
+a = d[0]
