@@ -99,29 +99,27 @@ func parse(code []string, root Node) Node {
 			openBrace = funcBrace
 			body = append(body, funcNode)
 		} else if tokens[0] == "int" {
-			body = append(body, parseDecl(tokens, line+1))
+			root.Params = append(root.Params, parseDecl(tokens, line+1))
 		} else if len(tokens) > 1 && tokens[1] == "(" && openBrace == 1 {
-			body = append(body, parseFunctionCall(tokens, line))
+			body = append(body, parseFunctionCall(tokens, line+1))
 		} else if openBrace == 1 {
 			body[len(body)-1].Body = append(body[len(body)-1].Body, parseGeneric(tokens, line+1))
 		} else if len(tokens) > 1 && tokens[1] == "(" {
-			body = append(body, parseFunctionCall(tokens, line))
+			body = append(body, parseFunctionCall(tokens, line+1))
 		} else {
 			newNode := parseGeneric(tokens, line+1)
 			linked := false
 
-			for i := 0; i < len(body); i++ {
-				if body[i].Value == newNode.Left.Value {
-					body[i].Right = newNode
+			for i := 0; i < len(root.Params); i++ {
+				if root.Params[i].Value == newNode.Left.Value {
+					body = append(body, newNode)
 					linked = true
 					break
-				} else {
-					linked = false
 				}
 			}
 
 			if !linked {
-				fmt.Println("Undeclared variable assignment: " + tokens[0] + " " + tokens[1] + " on line " + strconv.Itoa(line+1))
+				fmt.Println("Previously undeclared variable assignment: " + tokens[0] + " on line " + strconv.Itoa(line+1))
 				os.Exit(3)
 			}
 
@@ -189,7 +187,7 @@ func parseFunc(tokens []string, lineNumber int) (*Node, int) {
 	if closeParenIndex != 3 {
 		params := tokens[2:closeParenIndex]
 
-		for i := 1; i < (len(params) + 1/3); i += 3 {
+		for i := 1; i < (len(params) + 1); i += 3 {
 			newNode.Params = append(newNode.Params, parseDecl(params[i:i+2], lineNumber))
 		}
 	}
@@ -230,9 +228,14 @@ func parseFunctionCall(tokens []string, lineNumber int) *Node {
 	args := tokens[2:closeParenIndex]
 
 	// Parse each argument and add it to the function's Params
-	for _, arg := range args {
-		argTokens := strings.Fields(arg) // Split arguments in case of complex expressions
-		newNode.Params = append(newNode.Params, parseGeneric(argTokens, lineNumber))
+
+	for i := 0; i < (len(args)); i += 2 {
+		if args[i] == "," {
+			fmt.Println("Unexpected character \"" + args[i] + "\" in parameters call on line " + strconv.Itoa(lineNumber))
+			os.Exit(3)
+		} else {
+			newNode.Params = append(newNode.Params, parseGeneric(args[i:i+1], lineNumber))
+		}
 	}
 
 	return &newNode

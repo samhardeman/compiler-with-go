@@ -1,5 +1,4 @@
-int x = 5
-x = 2 + 3 * 4
+int x = 2 + 3 * 4
 int y
 y = x + 5
 int z
@@ -12,3 +11,4 @@ func sum(int a, int b) {
     b = a + 2
 }
 w = w + x
+sum(w)
