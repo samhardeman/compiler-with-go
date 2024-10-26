@@ -28,11 +28,13 @@ type Symbol struct {
 	value string
 }
 
+var line int
+
 func main() {
 	root := Node{}
 	var inputFile string = getFlags()
 	code := readLines(inputFile)
-	newRoot := parse(code, root)
+	newRoot := parse(code, &root)
 	traverseAST(newRoot.Body)
 }
 
@@ -63,7 +65,11 @@ func readLines(inputFile string) []string {
 
 	// for each line, append the line to the code array
 	for scanner.Scan() {
-		code = append(code, scanner.Text())
+		// splits line into tokens
+		tokens := strings.Fields(scanner.Text())
+		splitStringInPlace(&tokens)
+		tokens = append(tokens, "\n")
+		code = append(code, tokens...)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -74,40 +80,43 @@ func readLines(inputFile string) []string {
 }
 
 // Parse (big slay)
-func parse(code []string, root Node) Node {
+func parse(tokens []string, root *Node) *Node {
 	body := []*Node{}
 
-	openBrace := 0
-
 	// iterate through code
-	for i := 0; i < len(code); i++ {
-		line := i
+	for i := 0; i < len(tokens); i += 0 {
 
-		// splits line into tokens
-		tokens := strings.Fields(code[line])
-		splitStringInPlace(&tokens)
+		token := tokens[i]
 
-		if tokens[0] == "}" {
-			if openBrace == 1 {
-				openBrace--
-			} else {
-				fmt.Println("Expected \"something else entirely\" got " + tokens[0] + " on line " + strconv.Itoa(line-1))
-				os.Exit(3)
-			}
-		} else if tokens[0] == "func" {
-			funcNode, funcBrace := parseFunc(tokens, line+1)
-			openBrace = funcBrace
+		switch token {
+		case "func":
+			line++
+			endFunctionDeclIndex := slices.Index(tokens[i:], "{") + i + 1
+			closingBraceIndex := slices.Index(tokens[i:], "}") + i + 1
+			funcNode := parseFunc(tokens[i:endFunctionDeclIndex], line)
 			body = append(body, funcNode)
-		} else if tokens[0] == "int" {
-			root.Params = append(root.Params, parseDecl(tokens, line+1))
-		} else if len(tokens) > 1 && tokens[1] == "(" && openBrace == 1 {
-			body = append(body, parseFunctionCall(tokens, line+1))
-		} else if openBrace == 1 {
-			body[len(body)-1].Body = append(body[len(body)-1].Body, parseGeneric(tokens, line+1))
-		} else if len(tokens) > 1 && tokens[1] == "(" {
-			body = append(body, parseFunctionCall(tokens, line+1))
-		} else {
-			newNode := parseGeneric(tokens, line+1)
+			parse(tokens[endFunctionDeclIndex:closingBraceIndex], funcNode)
+
+			tokensTraversed := closingBraceIndex - i
+
+			i += tokensTraversed
+		case "int":
+			line++
+			endLineIndex := findEndLine(tokens[i:]) + i
+			fmt.Println(tokens[i:endLineIndex])
+			root.Params = append(root.Params, parseDecl(tokens[i:endLineIndex], line))
+
+			i += endLineIndex
+			fmt.Println(tokens[i])
+
+		case "\n":
+			line++
+			i++
+		case ";":
+			i++
+		default:
+			fmt.Println(tokens[i : findEndLine(tokens[i:])+i])
+			newNode := parseGeneric(tokens[i:findEndLine(tokens[i:])+i], line)
 			linked := false
 
 			for i := 0; i < len(root.Params); i++ {
@@ -122,7 +131,7 @@ func parse(code []string, root Node) Node {
 				fmt.Println("Previously undeclared variable assignment: " + tokens[0] + " on line " + strconv.Itoa(line+1))
 				os.Exit(3)
 			}
-
+			i++
 		}
 
 	}
@@ -154,10 +163,10 @@ func parseDecl(tokens []string, lineNumber int) *Node {
 }
 
 // Parse Function Declarations
-func parseFunc(tokens []string, lineNumber int) (*Node, int) {
+func parseFunc(tokens []string, lineNumber int) *Node {
 	var newNode Node
 	splitStringInPlace(&tokens)
-	openParen, openBrace := 0, 0
+	openParen := 0
 
 	newNode.Type = "FUNCTION_DECL"
 
@@ -197,15 +206,13 @@ func parseFunc(tokens []string, lineNumber int) (*Node, int) {
 	} else if tokens[closeParenIndex+1] != "{" {
 		fmt.Println("Expected \"{\" got " + tokens[closeParenIndex+1] + " on line " + strconv.Itoa(lineNumber))
 		os.Exit(3)
-	} else {
-		openBrace++
 	}
 
-	return &newNode, openBrace
+	return &newNode
 
 }
 
-func parseFunctionCall(tokens []string, lineNumber int) *Node {
+func parseFunctionCall(tokens []string, lineNumber int) Node {
 	newNode := Node{
 		Type:  "FUNCTION_CALL",
 		Value: tokens[0], // The function name (e.g., 'print')
@@ -238,7 +245,7 @@ func parseFunctionCall(tokens []string, lineNumber int) *Node {
 		}
 	}
 
-	return &newNode
+	return newNode
 }
 
 func parseArray(tokens []string, lineNumber int) *Node {
@@ -330,6 +337,28 @@ func getBranch(isTail bool) string {
 	return "├── "
 }
 
+func findEndLine(chunk []string) int {
+	var endLineIndex int
+
+	newLineIndex := slices.Index(chunk, "\n")
+
+	semiIndex := slices.Index(chunk, ";")
+
+	if semiIndex == -1 {
+		endLineIndex = newLineIndex
+
+	} else if newLineIndex > semiIndex {
+		endLineIndex = newLineIndex
+
+	} else {
+		endLineIndex = semiIndex
+
+	}
+
+	return endLineIndex
+
+}
+
 func bisect(expression []string, character string, direction string) []string {
 	index := slices.Index(expression, character)
 
@@ -406,6 +435,8 @@ func parseGeneric(tokens []string, lineNumber int) *Node {
 			Left:  parseGeneric(bisect(tokens, "-", "left"), lineNumber),
 			Right: parseGeneric(bisect(tokens, "-", "right"), lineNumber),
 		}
+	} else if slices.Contains(tokens, "(") && slices.Contains(tokens, ")") {
+		newNode = parseFunctionCall(tokens, line)
 	} else if slices.Contains(numbers, tokens[0]) {
 		newNode = Node{
 			Type:  "NUMBER",
@@ -419,7 +450,7 @@ func parseGeneric(tokens []string, lineNumber int) *Node {
 			Value: tokens[0],
 		}
 	} else {
-		fmt.Println("Unrecognized character")
+		fmt.Println("Unrecognized character \"" + tokens[1] + " \" on line " + strconv.Itoa(line))
 		os.Exit(3)
 
 	}
