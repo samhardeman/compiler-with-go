@@ -12,6 +12,7 @@ import (
 	"strings"
 )
 
+// Node represents an AST node
 type Node struct {
 	Type     string
 	DType    string
@@ -24,140 +25,92 @@ type Node struct {
 	Right    *Node
 }
 
-type Symbol struct {
-	dtype string
-	value string
-}
-
 var line int
 
 func main() {
-	line++
-	root := Node{}
-	var inputFile string = getFlags()
+	inputFile := parseFlags()
 	code := readLines(inputFile)
-	newRoot := parse(code, &root)
-	traverseAST(newRoot.Body)
+	root := parse(code, &Node{})
+	traverseAST(root.Body)
 }
 
-func getFlags() string {
-	inputFile := flag.String("file", "", "")
+// parseFlags handles command-line arguments and validates file input
+func parseFlags() string {
+	inputFile := flag.String("file", "", "File to compile")
 	flag.Parse()
-	if string(*inputFile) == "" {
-		fmt.Printf("no file to compile provided")
-		os.Exit(3)
+	if *inputFile == "" {
+		log.Fatalf("Error: No file to compile provided")
 	}
-	return string(*inputFile)
+	return *inputFile
 }
 
-// read lines
+// readLines reads all lines from the given input file and tokenizes each line
 func readLines(inputFile string) []string {
-	code := []string{}
-	// open file
-	f, err := os.Open(inputFile)
+	file, err := os.Open(inputFile)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error opening file: %v", err)
 	}
+	defer file.Close()
 
-	// close please
-	defer f.Close()
-
-	// read the file line by line using scanner
-	scanner := bufio.NewScanner(f)
-
-	// for each line, append the line to the code array
+	var code []string
+	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		// splits line into tokens
 		tokens := strings.Fields(scanner.Text())
-		splitStringInPlace(&tokens)
+		splitTokens(&tokens)
 		tokens = append(tokens, "\n")
 		code = append(code, tokens...)
 	}
-
 	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error reading file: %v", err)
 	}
-
 	return code
 }
 
-// Parse (big slay)
+// parse recursively processes tokens and builds the AST
 func parse(tokens []string, root *Node) *Node {
 	body := []*Node{}
-
-	// iterate through code
-	for i := 0; i < len(tokens); i += 0 {
-
+	for i := 0; i < len(tokens); {
 		token := tokens[i]
-
 		switch token {
 		case "func":
-			line++
-			endFunctionDeclIndex := slices.Index(tokens[i:], "{") + i + 1
-			closingBraceIndex := slices.Index(tokens[i:], "}") + i + 1
-			funcNode := parseFunc(tokens[i:endFunctionDeclIndex], line)
-
-			isValid := symbolMan(root, funcNode)
-
-			parse(tokens[endFunctionDeclIndex:closingBraceIndex-1], funcNode)
-
-			if !isValid {
-				fmt.Println(funcNode.Value + " has already been declared! Error line: " + strconv.Itoa(line))
-				os.Exit(3)
+			funcNode := parseFunc(tokens[i:slices.Index(tokens[i:], "{")+i+1], line)
+			if !symbolCheck(root, funcNode) {
+				log.Fatalf("Error: Function %s already declared on line %d", funcNode.Value, line)
 			}
-
-			root.Params = append(root.Params, symbolNode(funcNode.Value, funcNode.Type, funcNode.DType))
-
-			if tokens[closingBraceIndex] == "\n" {
-				line++
-			}
-
+			root.Params = append(root.Params, funcNode)
 			body = append(body, funcNode)
-
-			tokensTraversed := closingBraceIndex - i
-
-			i += tokensTraversed
+			i += advanceToEnd(tokens[i:], "{", "}") // advance to end of function block
 		case "int":
-			line++
-			endLineIndex := findEndLine(tokens[i:]) + i
-			declLine := tokens[i:endLineIndex]
-			declNode := parseDecl(declLine, line)
-
-			isValid := symbolMan(root, declNode)
-
-			if !isValid {
-				fmt.Println(declNode.Value + " has already been declared!")
-				os.Exit(3)
+			declNode := parseDeclaration(tokens[i:advanceToEnd(tokens[i:], "\n")+i], line)
+			if !symbolCheck(root, declNode) {
+				log.Fatalf("Error: Variable %s already declared on line %d", declNode.Value, line)
 			}
-
-			root.Params = append(root.Params, symbolNode(declNode.Value, declNode.Type, declNode.DType))
-
-			if len(declLine) > 2 {
-				if declLine[2] == "=" {
-					newNode := parseGeneric(declLine[1:], line)
-					body = append(body, newNode)
-				}
-			}
-
-			i = endLineIndex
+			root.Params = append(root.Params, declNode)
+			body = append(body, declNode)
+			i += advanceToEnd(tokens[i:], "\n")
 		case "[":
-			var arrayDecl *Node
-			endLineIndex := findEndLine(tokens[i:]) + i
+			arrayNode := parseArrayDecl(tokens[i:advanceToEnd(tokens[i:], "\n")+i], line)
+			if !symbolCheck(root, arrayNode) {
+				log.Fatalf("Error: Array %s already declared on line %d", arrayNode.Value, line)
+			}
+			root.Params = append(root.Params, arrayNode)
+			body = append(body, arrayNode)
+			i += advanceToEnd(tokens[i:], "\n")
 
-			declLine := tokens[i:endLineIndex]
+			var arrayDecl *Node
+
+			declLine := tokens[i : advanceToEnd(tokens[i:], "\n")+i]
 
 			if tokens[i+1] == "]" {
-				arrayDecl = parseArrayDecl(tokens[i:endLineIndex], line)
+				arrayDecl = parseArrayDecl(declLine, line)
 			}
 
-			isValid := symbolMan(root, arrayDecl)
-
-			if !isValid {
+			if !symbolCheck(root, arrayDecl) {
 				fmt.Println(arrayDecl.Value + " has already been declared!")
 				os.Exit(3)
 			}
 
-			root.Params = append(root.Params, symbolNode(arrayDecl.Value, arrayDecl.Type, arrayDecl.DType))
+			root.Params = append(root.Params, arrayNode)
 
 			if len(declLine) > 3 {
 
@@ -168,132 +121,127 @@ func parse(tokens []string, root *Node) *Node {
 				}
 			}
 
-			i = endLineIndex
-
-		case "\n":
-			i++
-		case ";":
+			i += advanceToEnd(tokens[i:], "\n")
+		case "\n", ";":
 			i++
 		default:
-			endLineIndex := findEndLine(tokens[i:]) + i
-			newNode := parseGeneric(tokens[i:endLineIndex], line)
-
-			isValid := symbolMan(root, newNode)
-
-			if isValid {
-				body = append(body, newNode)
+			fmt.Println(tokens[i : advanceToEnd(tokens[i:], "\n")+i])
+			assignNode := parseGeneric(tokens[i:advanceToEnd(tokens[i:], "\n")+i], line)
+			fmt.Println("parse: " + assignNode.Value)
+			if symbolCheck(root, assignNode) {
+				body = append(body, assignNode)
+			} else {
+				log.Fatalf("Error: Undeclared variable %s assignment on line %d", tokens[i], line)
 			}
-
-			if !isValid {
-				fmt.Println("Previously undeclared variable assignment: " + tokens[i] + " on line " + strconv.Itoa(line))
-				os.Exit(3)
-			}
-			i = endLineIndex + 1
+			i += advanceToEnd(tokens[i:], "\n")
 		}
-
 	}
-
 	root.Body = body
-
 	return root
 }
 
-func symbolMan(root *Node, newNode *Node) bool {
-	var declared bool
-	var isValid bool
-
-	switch newNode.Type {
-	case "DECLARATION":
-		for i := 0; i < len(root.Params); i++ {
-			if root.Params[i].Value == newNode.Value {
-				declared = true
-				break
+// symbolCheck checks for existing declarations to avoid re-declaration errors.
+// If it's an assignment, it checks the left node to ensure the symbol is declared.
+func symbolCheck(root *Node, newNode *Node) bool {
+	// Check if the node is an assignment
+	if newNode.Type == "ASSIGN" {
+		// Traverse the left node to check for declaration
+		if newNode.Left != nil {
+			for _, param := range root.Params {
+				fmt.Println("Checking assignment for:", param.Value, "vs", newNode.Left.Value)
+				if param.Value == newNode.Left.Value {
+					return true // Symbol exists, valid assignment
+				}
 			}
+			fmt.Println("Undeclared variable in assignment:", newNode.Left.Value)
+			return false // Symbol not declared, invalid assignment
 		}
-		if declared {
-			isValid = false
-		} else {
-			isValid = true
-		}
-
-	case "FUNCTION_DECL":
-		for i := 0; i < len(root.Params); i++ {
-			if root.Params[i].Value == newNode.Value {
-				declared = true
-				break
-			}
-		}
-		if declared {
-			isValid = false
-		} else {
-			isValid = true
-		}
-
-	case "ARRAY_DECL":
-		for i := 0; i < len(root.Params); i++ {
-			if root.Params[i].Value == newNode.Value {
-				declared = true
-				break
-			}
-		}
-		if declared {
-			isValid = false
-		} else {
-			isValid = true
-		}
-
-	case "ASSIGN":
-		for i := 0; i < len(root.Params); i++ {
-			if root.Params[i].Value == newNode.Left.Value {
-				declared = true
-				break
-			}
-		}
-		if !declared {
-			isValid = false
-		} else {
-			isValid = true
-		}
-	default:
-		isValid = true
 	}
 
-	return isValid
+	// For functions, check directly in root.Params without left/right traversal
+	if newNode.Type == "FUNCTION" {
+		for _, param := range root.Params {
+			fmt.Println("Checking function parameter:", param.Value, "vs", newNode.Value)
+			if param.Value == newNode.Value {
+				return true // Function name is already declared
+			}
+		}
+		return false // New function declaration allowed
+	}
+
+	// Default case: assume no re-declaration errors
+	return true
 }
 
-func symbolNode(name string, decltype string, dtype string) *Node {
-	newNode := Node{
-		Type:  decltype,
-		DType: dtype,
-		Value: name,
+// splitTokens separates mixed tokens in a line (e.g., "func(" to "func", "(")
+func splitTokens(tokens *[]string) {
+	pattern := regexp.MustCompile(`[a-zA-Z0-9]+|[(){}[\];,+\-*/%=<>!]`)
+	var result []string
+	for _, str := range *tokens {
+		result = append(result, pattern.FindAllString(str, -1)...)
 	}
-
-	return &newNode
+	*tokens = result
 }
 
-func parseDecl(tokens []string, lineNumber int) *Node {
-	newNode := Node{
-		Type:  "DECLARATION",
-		DType: tokens[0],
-		Value: tokens[1],
+// traverseAST prints the AST recursively
+func traverseAST(nodes []*Node) {
+	for _, node := range nodes {
+		printNode(node, "", true)
 	}
+}
 
-	if !isIdentifier(tokens[1]) {
-		fmt.Println("Expected variable name declaration got " + tokens[1] + " on line " + strconv.Itoa(lineNumber))
+// printNode displays details of an AST node in a formatted tree-like structure
+func printNode(node *Node, prefix string, isTail bool) {
+	fmt.Printf("%s%s [Type: %s, DType: %s, Value: %s]\n", prefix, getBranch(isTail), node.Type, node.DType, node.Value)
+	newPrefix := prefix
+	if isTail {
+		newPrefix += "    "
+	} else {
+		newPrefix += "│   "
+	}
+	if len(node.Params) > 0 {
+		fmt.Println(newPrefix + "Params:")
+		for i, param := range node.Params {
+			printNode(param, newPrefix, i == len(node.Params)-1)
+		}
+	}
+	if len(node.Body) > 0 {
+		fmt.Println(newPrefix + "Body:")
+		for i, bodyNode := range node.Body {
+			printNode(bodyNode, newPrefix, i == len(node.Body)-1)
+		}
+	}
+	if node.Left != nil {
+		fmt.Println(newPrefix + "Left:")
+		printNode(node.Left, newPrefix, false)
+	}
+	if node.Right != nil {
+		fmt.Println(newPrefix + "Right:")
+		printNode(node.Right, newPrefix, true)
+	}
+}
+
+// getBranch determines the branch characters for tree-like printing
+func getBranch(isTail bool) string {
+	if isTail {
+		return "└── "
+	}
+	return "├── "
+}
+
+// parseFunc parses a function declaration
+func parseFunc(tokens []string, lineNumber int) *Node {
+	if len(tokens) < 3 {
+		fmt.Println("Insufficient tokens for function declaration on line " + strconv.Itoa(lineNumber))
 		os.Exit(3)
 	}
-	return &newNode
-}
 
-// Parse Function Declarations
-func parseFunc(tokens []string, lineNumber int) *Node {
-	var newNode Node
-	openParen := 0
+	newNode := &Node{
+		Type:  "FUNCTION_DECL",
+		DType: "void",
+	}
 
-	newNode.Type = "FUNCTION_DECL"
-	newNode.DType = "void"
-
-	if !isIdentifier(tokens[1]) {
+	if !isValidIdentifier(tokens[1]) {
 		fmt.Println("Expected function name declaration got " + tokens[1] + " on line " + strconv.Itoa(lineNumber))
 		os.Exit(3)
 	} else {
@@ -303,36 +251,121 @@ func parseFunc(tokens []string, lineNumber int) *Node {
 	if tokens[2] != "(" {
 		fmt.Println("Expected \"(\" got " + tokens[2] + " on line " + strconv.Itoa(lineNumber))
 		os.Exit(3)
-	} else {
-		openParen++
 	}
 
+	// Check if closing parenthesis exists
 	closeParenIndex := slices.Index(tokens, ")")
-
 	if closeParenIndex == -1 {
-		fmt.Println("Expected \")\" got " + tokens[2] + " on line " + strconv.Itoa(lineNumber))
+		fmt.Println("Expected \")\" but none found on line " + strconv.Itoa(lineNumber))
 		os.Exit(3)
-	} else {
-		openParen--
 	}
 
-	if closeParenIndex != 3 {
-		params := tokens[2:closeParenIndex]
+	// Parse function parameters if they exist
+	if closeParenIndex > 3 {
+		newNode.Params = parseParams(tokens[3:closeParenIndex], lineNumber)
+	}
 
-		for i := 1; i < (len(params) + 1); i += 3 {
-			newNode.Params = append(newNode.Params, parseDecl(params[i:i+2], lineNumber))
+	// Ensure there’s a function body
+	if closeParenIndex+1 < len(tokens) && tokens[closeParenIndex+1] == "{" {
+		return newNode
+	}
+
+	fmt.Println("Expected \"{\" after function declaration on line " + strconv.Itoa(lineNumber))
+	os.Exit(3)
+
+	return newNode
+}
+
+// parseDeclaration parses a variable declaration
+func parseDeclaration(tokens []string, lineNumber int) *Node {
+	node := &Node{Type: "DECLARATION", DType: tokens[0], Value: tokens[1]}
+	if !isValidIdentifier(tokens[1]) {
+		log.Fatalf("Error: Invalid variable name %s on line %d", tokens[1], lineNumber)
+	}
+	return node
+}
+
+// parseParams extracts and parses function parameters from tokens
+func parseParams(tokens []string, lineNumber int) []*Node {
+	var params []*Node
+	for i := 0; i < len(tokens); i += 3 {
+		fmt.Println(tokens)
+		// Ensure there are enough tokens to form a parameter (dtype and name)
+		if i+1 >= len(tokens) {
+			fmt.Println("Incomplete parameter declaration on line " + strconv.Itoa(lineNumber))
+			os.Exit(3)
+		}
+
+		// Validate the data type
+		dtype := tokens[i]
+		if !isValidDataType(dtype) {
+			fmt.Println("Invalid data type " + dtype + " for parameter on line " + strconv.Itoa(lineNumber))
+			os.Exit(3)
+		}
+
+		// Validate the parameter name
+		paramName := tokens[i+1]
+		if !isValidIdentifier(paramName) {
+			fmt.Println("Invalid identifier " + paramName + " for parameter name on line " + strconv.Itoa(lineNumber))
+			os.Exit(3)
+		}
+
+		// Create a Node for the parameter
+		paramNode := &Node{
+			Type:  "PARAM",
+			DType: dtype,
+			Value: paramName,
+		}
+		params = append(params, paramNode)
+	}
+	return params
+}
+
+// isValidIdentifier validates if a token is a valid identifier
+func isValidIdentifier(word string) bool {
+	return regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`).MatchString(word)
+}
+
+// isValidDataType checks if the provided data type is valid
+func isValidDataType(dtype string) bool {
+	validDataTypes := []string{"int", "float", "string", "bool"}
+	for _, validType := range validDataTypes {
+		if dtype == validType {
+			return true
 		}
 	}
+	return false
+}
 
-	if isIdentifier(tokens[closeParenIndex+1]) {
-		newNode.DType = tokens[closeParenIndex+1]
-	} else if tokens[closeParenIndex+1] != "{" {
-		fmt.Println("Expected \"{\" got " + tokens[closeParenIndex+1] + " on line " + strconv.Itoa(lineNumber))
+// advanceToEnd processes tokens until a specified end delimiter or a default end-of-line delimiter
+func advanceToEnd(tokens []string, delimiter ...string) int {
+	endDelimiter := "\n" // Default end delimiter
+	if len(delimiter) > 0 {
+		endDelimiter = delimiter[0] // Use provided delimiter if available
+	}
+
+	for i, token := range tokens {
+		if token == endDelimiter {
+			return i
+		}
+	}
+	return len(tokens) // Return length if end delimiter is not found
+}
+
+// parseArrayDecl parses an array declaration, supporting syntax like []int d or []int d = {1, 2, 3}
+func parseArrayDecl(tokens []string, lineNumber int) *Node {
+	newNode := Node{
+		Type:  "ARRAY_DECL",
+		DType: tokens[0] + tokens[1] + tokens[2],
+		Value: tokens[3],
+	}
+
+	if !isValidIdentifier(tokens[3]) {
+		fmt.Println("Expected variable name declaration got " + tokens[3] + " on line " + strconv.Itoa(lineNumber))
 		os.Exit(3)
 	}
 
 	return &newNode
-
 }
 
 func parseArray(tokens []string, lineNumber int) Node {
@@ -372,267 +405,48 @@ func parseArray(tokens []string, lineNumber int) Node {
 	return newNode
 }
 
-func parseFunctionCall(tokens []string, lineNumber int) Node {
-	newNode := Node{
-		Type:  "FUNCTION_CALL",
-		Value: tokens[0], // The function name (e.g., 'print')
-	}
-
-	// Expect the second token to be an opening parenthesis
-	if tokens[1] != "(" {
-		fmt.Println("Expected \"(\" after function name, got " + tokens[1] + " on line " + strconv.Itoa(lineNumber))
-		os.Exit(3)
-	}
-
-	// Find the closing parenthesis
-	closeParenIndex := slices.Index(tokens, ")")
-	if closeParenIndex == -1 {
-		fmt.Println("Expected \")\" to close function call on line " + strconv.Itoa(lineNumber))
-		os.Exit(3)
-	}
-
-	// Extract the arguments between parentheses
-	args := tokens[2:closeParenIndex]
-
-	// Parse each argument and add it to the function's Params
-
-	for i := 0; i < (len(args)); i += 2 {
-		if args[i] == "," {
-			fmt.Println("Unexpected character \"" + args[i] + "\" in parameters call on line " + strconv.Itoa(lineNumber))
-			os.Exit(3)
-		} else {
-			newNode.Params = append(newNode.Params, parseGeneric(args[i:i+1], lineNumber))
-		}
-	}
-
-	return newNode
-}
-
-func parseArrayDecl(tokens []string, lineNumber int) *Node {
-	newNode := Node{
-		Type:  "ARRAY_DECL",
-		DType: tokens[0] + tokens[1] + tokens[2],
-		Value: tokens[3],
-	}
-
-	if !isIdentifier(tokens[3]) {
-		fmt.Println("Expected variable name declaration got " + tokens[3] + " on line " + strconv.Itoa(lineNumber))
-		os.Exit(3)
-	}
-
-	return &newNode
-}
-
-// Validates identifiers (variable names, function names, etc.)
-func isIdentifier(word string) bool {
-	validIdentifier := regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
-	return validIdentifier.MatchString(word)
-}
-
-// SplitStringInPlace splits mixed strings (like "add(int" or "b)") in the array in place
-func splitStringInPlace(arr *[]string) {
-	// Define a regex pattern to match sequences of letters, digits, or special characters, including arithmetic operators and equal signs
-	pattern := regexp.MustCompile(`[a-zA-Z0-9]+|[(){}[\];,+\-*/%=<>!]`)
-
-	// Create a new slice to store the modified array
-	var result []string
-
-	for _, str := range *arr {
-		// Find all matches based on the regex pattern
-		matches := pattern.FindAllString(str, -1)
-		// Append the split matches to the result array
-		result = append(result, matches...)
-	}
-
-	// Replace the original array content with the new split elements
-	*arr = result
-}
-
-func traverseAST(root []*Node) {
-	for i := 0; i < len(root); i++ {
-		printNode(root[i], "", true)
-	}
-}
-
-func printNode(node *Node, prefix string, isTail bool) {
-	// Construct the current node's details (Type, DType, Value)
-	nodeRepresentation := fmt.Sprintf("%s [Type: %s, DType: %s, Value: %s]", node.Value, node.Type, node.DType, node.Value)
-
-	// Print the node, with graphical tree branches (└── or ├──)
-	fmt.Printf("%s%s%s\n", prefix, getBranch(isTail), nodeRepresentation)
-
-	// Prepare the prefix for children
-	newPrefix := prefix
-	if isTail {
-		newPrefix += "    " // For the last child, indent
-	} else {
-		newPrefix += "│   " // For other children, continue the branch
-	}
-
-	// Handle Params, if any
-	if len(node.Params) > 0 {
-		fmt.Println(newPrefix + "Params:")
-		for i := 0; i < len(node.Params); i++ {
-			printNode(node.Params[i], newPrefix, i == len(node.Params)-1)
-		}
-	}
-
-	// Handle Body, if any
-	if len(node.Body) > 0 {
-		fmt.Println(newPrefix + "Body:")
-		for i := 0; i < len(node.Body); i++ {
-			printNode(node.Body[i], newPrefix, i == len(node.Body)-1)
-		}
-	}
-
-	// Handle Left and Right children (for operations like +, -, *, /)
-	if node.Left != nil {
-		fmt.Println(newPrefix + "Left:")
-		printNode(node.Left, newPrefix, false)
-	}
-	if node.Right != nil {
-		fmt.Println(newPrefix + "Right:")
-		printNode(node.Right, newPrefix, true)
-	}
-}
-
-// getBranch returns the appropriate branch characters for the tree
-func getBranch(isTail bool) string {
-	if isTail {
-		return "└── "
-	}
-	return "├── "
-}
-
-func findEndLine(chunk []string) int {
-	var endLineIndex int
-
-	newLineIndex := slices.Index(chunk, "\n")
-
-	semiIndex := slices.Index(chunk, ";")
-
-	if semiIndex == -1 {
-		endLineIndex = newLineIndex
-
-	} else if newLineIndex > semiIndex {
-		endLineIndex = newLineIndex
-
-	} else {
-		endLineIndex = semiIndex
-
-	}
-
-	return endLineIndex
-
-}
-
-func bisect(expression []string, character string, direction string) []string {
-	index := slices.Index(expression, character)
-
-	// Check if character is not found
-	if index == -1 {
-		fmt.Println("Character not found in expression.")
-		os.Exit(3)
-	}
-
-	tokens := []string{}
-	if direction == "right" {
-		for i := index + 1; i < len(expression); i++ {
-			tokens = append(tokens, expression[i])
-		}
-	} else if direction == "left" {
-		for i := 0; i < index; i++ {
-			tokens = append(tokens, expression[i])
-		}
-	} else {
-		fmt.Println("Did not recognize direction: " + direction)
-		os.Exit(3)
-	}
-
-	return tokens
-}
-
+// parseGeneric handles assignments and operations
 func parseGeneric(tokens []string, lineNumber int) *Node {
-
-	var newNode Node
-
-	numbers := strings.Split("1234567890", "")
-	letters := strings.Split("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", "")
-
-	if slices.Contains(tokens, "=") {
-		newNode = Node{
-			Type:  "ASSIGN",
-			DType: "CHAR",
-			Value: "=",
-			Left:  parseGeneric(bisect(tokens, "=", "left"), lineNumber),
-			Right: parseGeneric(bisect(tokens, "=", "right"), lineNumber),
-		}
-	} else if slices.Contains(tokens, "*") {
-		newNode = Node{
-			Type:  "MULT",
-			DType: "CHAR",
-			Value: "*",
-			Left:  parseGeneric(bisect(tokens, "*", "left"), lineNumber),
-			Right: parseGeneric(bisect(tokens, "*", "right"), lineNumber),
-		}
-
-	} else if slices.Contains(tokens, "/") {
-		newNode = Node{
-			Type:  "DIV",
-			DType: "CHAR",
-			Value: "/",
-			Left:  parseGeneric(bisect(tokens, "/", "left"), lineNumber),
-			Right: parseGeneric(bisect(tokens, "/", "right"), lineNumber),
-		}
-
-	} else if slices.Contains(tokens, "+") {
-		newNode = Node{
-			Type:  "ADD",
-			DType: "CHAR",
-			Value: "+",
-			Left:  parseGeneric(bisect(tokens, "+", "left"), lineNumber),
-			Right: parseGeneric(bisect(tokens, "+", "right"), lineNumber),
-		}
-
-	} else if slices.Contains(tokens, "-") {
-		newNode = Node{
-			Type:  "SUB",
-			DType: "CHAR",
-			Value: "-",
-			Left:  parseGeneric(bisect(tokens, "-", "left"), lineNumber),
-			Right: parseGeneric(bisect(tokens, "-", "right"), lineNumber),
-		}
-	} else if slices.Contains(tokens, "(") && slices.Contains(tokens, ")") {
-		newNode = parseFunctionCall(tokens, line)
-	} else if slices.Contains(tokens, "{") && slices.Contains(tokens, "}") {
-		newNode = parseArray(tokens, line)
-	} else if slices.Contains(tokens, "[") && slices.Contains(tokens, "]") {
-		var index string
-		for _, token := range tokens {
-			index = index + token
-		}
-		newNode = Node{
-			Type:  "ARRAY_INDEX",
-			DType: "INDEX",
-			Value: index,
-		}
-	} else if slices.Contains(numbers, tokens[0]) {
-		newNode = Node{
-			Type:  "NUMBER",
-			DType: "INT",
-			Value: tokens[0],
-		}
-	} else if slices.Contains(letters, tokens[0]) {
-		newNode = Node{
-			Type:  "IDENTIFIER",
-			DType: "CHAR",
-			Value: tokens[0],
-		}
-	} else {
-		fmt.Println("Unrecognized character \"" + tokens[0] + " \" on line " + strconv.Itoa(line))
-		os.Exit(3)
-
+	fmt.Println("parseGeneric: " + tokens[0])
+	switch {
+	case len(tokens) > 2 && tokens[1] == "=":
+		left := &Node{Type: "IDENTIFIER", Value: tokens[0]}
+		right := parseExpression(tokens[2:], lineNumber)
+		return &Node{Type: "ASSIGNMENT", Value: tokens[1], Left: left, Right: right}
+	default:
+		return parseExpression(tokens, lineNumber)
 	}
+}
 
-	return &newNode
+// parseExpression handles arithmetic and logical expressions recursively
+func parseExpression(tokens []string, lineNumber int) *Node {
+	fmt.Println(tokens)
+	for _, op := range []string{"=", "+", "-", "*", "/", "%", "==", "!=", "<", ">", "<=", ">="} {
+		if index := indexOf(tokens, op); index != -1 {
+			return &Node{
+				Type:  "EXPRESSION",
+				Value: op,
+				Left:  parseExpression(tokens[:index], lineNumber),
+				Right: parseExpression(tokens[index+1:], lineNumber),
+			}
+		}
+	}
+	return &Node{Type: "LITERAL", Value: tokens[0]}
+}
+
+// indexOf finds the first occurrence of a string in a slice
+func indexOf(tokens []string, search string) int {
+	for i, token := range tokens {
+		if token == search {
+			return i
+		}
+	}
+	return -1
+}
+
+// Helper functions for error handling and code analysis
+
+// raiseError handles error messages with line numbers
+func raiseError(line int, message string) {
+	log.Fatalf("Error on line %d: %s", line, message)
 }
