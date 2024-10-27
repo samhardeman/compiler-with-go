@@ -37,7 +37,10 @@ func main() {
 	var inputFile string = getFlags()
 	code := readLines(inputFile)
 	newRoot := parse(code, &root)
-	traverseAST(newRoot.Body)
+	//traverseAST(newRoot.Body)
+	optimizer := NewOptimizer()
+	optimizedRoot := optimizer.Optimize(*newRoot)
+	printAST(&optimizedRoot, "", true) // Print optimized AST for verification
 }
 
 func getFlags() string {
