@@ -94,6 +94,15 @@ func parse(tokens []string, root *Node) *Node {
 		token := tokens[i]
 
 		switch token {
+		case "write":
+			endLineIndex := findEndLine(tokens[i:]) + i
+
+			writeNode := parseWrite(tokens[i:endLineIndex], line, root)
+
+			body = append(body, &writeNode)
+
+			i = endLineIndex
+			line++
 		case "func":
 			line++
 			endFunctionDeclIndex := slices.Index(tokens[i:], "{") + i + 1
@@ -109,7 +118,7 @@ func parse(tokens []string, root *Node) *Node {
 				os.Exit(3)
 			}
 
-			root.Params = append(root.Params, symbolNode(funcNode.Value, funcNode.Type, funcNode.DType))
+			root.Declared = append(root.Declared, symbolNode(funcNode.Value, funcNode.Type, funcNode.DType))
 
 			if tokens[closingBraceIndex] == "\n" {
 				line++
@@ -133,11 +142,11 @@ func parse(tokens []string, root *Node) *Node {
 				os.Exit(3)
 			}
 
-			root.Params = append(root.Params, symbolNode(declNode.Value, declNode.Type, declNode.DType))
+			root.Declared = append(root.Declared, symbolNode(declNode.Value, declNode.Type, declNode.DType))
 
 			if len(declLine) > 2 {
 				if declLine[2] == "=" {
-					newNode := parseGeneric(declLine[1:], line)
+					newNode := parseGeneric(declLine[1:], line, root)
 					body = append(body, newNode)
 				}
 			}
@@ -160,12 +169,12 @@ func parse(tokens []string, root *Node) *Node {
 				os.Exit(3)
 			}
 
-			root.Params = append(root.Params, symbolNode(arrayDecl.Value, arrayDecl.Type, arrayDecl.DType))
+			root.Declared = append(root.Declared, symbolNode(arrayDecl.Value, arrayDecl.Type, arrayDecl.DType))
 
 			if len(declLine) > 3 {
 
 				if declLine[4] == "=" {
-					newNode := parseGeneric(declLine[3:], line)
+					newNode := parseGeneric(declLine[3:], line, root)
 					newNode.Right.DType = arrayDecl.DType
 					body = append(body, newNode)
 				}
@@ -173,13 +182,47 @@ func parse(tokens []string, root *Node) *Node {
 
 			i = endLineIndex
 
+		case "return":
+			line++
+			endLineIndex := findEndLine(tokens[i:]) + i
+
+			if len(tokens[i:endLineIndex]) > 2 {
+				fmt.Println("Only one return argument allowed. Error: line " + strconv.Itoa(line))
+				os.Exit(3)
+			}
+
+			newNode := parseReturn(tokens[i:endLineIndex], line, root)
+
+			isValid := symbolMan(root, newNode)
+
+			if isValid {
+				root.Returns = append(root.Returns, newNode)
+			}
+
+			if !isValid {
+				fmt.Println("Previously undeclared variable assignment: " + tokens[i] + " on line " + strconv.Itoa(line))
+				os.Exit(3)
+			}
+
+			for _, declarations := range root.Declared {
+				if declarations.Value == newNode.Value {
+					newNode.DType = declarations.DType
+					break
+				}
+			}
+
+			checkFunctionReturnType(root, newNode)
+
+			root.Returns = append(root.Returns, newNode)
+
+			i = endLineIndex
 		case "\n":
 			i++
 		case ";":
 			i++
 		default:
 			endLineIndex := findEndLine(tokens[i:]) + i
-			newNode := parseGeneric(tokens[i:endLineIndex], line)
+			newNode := parseGeneric(tokens[i:endLineIndex], line, root)
 
 			isValid := symbolMan(root, newNode)
 
@@ -207,6 +250,12 @@ func symbolMan(root *Node, newNode *Node) bool {
 
 	switch newNode.Type {
 	case "DECLARATION":
+		for i := 0; i < len(root.Declared); i++ {
+			if root.Declared[i].Value == newNode.Value {
+				declared = true
+				break
+			}
+		}
 		for i := 0; i < len(root.Params); i++ {
 			if root.Params[i].Value == newNode.Value {
 				declared = true
@@ -220,6 +269,12 @@ func symbolMan(root *Node, newNode *Node) bool {
 		}
 
 	case "FUNCTION_DECL":
+		for i := 0; i < len(root.Declared); i++ {
+			if root.Declared[i].Value == newNode.Value {
+				declared = true
+				break
+			}
+		}
 		for i := 0; i < len(root.Params); i++ {
 			if root.Params[i].Value == newNode.Value {
 				declared = true
@@ -233,6 +288,12 @@ func symbolMan(root *Node, newNode *Node) bool {
 		}
 
 	case "ARRAY_DECL":
+		for i := 0; i < len(root.Declared); i++ {
+			if root.Declared[i].Value == newNode.Value {
+				declared = true
+				break
+			}
+		}
 		for i := 0; i < len(root.Params); i++ {
 			if root.Params[i].Value == newNode.Value {
 				declared = true
@@ -244,10 +305,21 @@ func symbolMan(root *Node, newNode *Node) bool {
 		} else {
 			isValid = true
 		}
+		if declared {
+			isValid = false
+		} else {
+			isValid = true
+		}
 
-	case "ASSIGN":
+	case "RETURN":
+		for i := 0; i < len(root.Declared); i++ {
+			if root.Declared[i].Value == newNode.Value {
+				declared = true
+				break
+			}
+		}
 		for i := 0; i < len(root.Params); i++ {
-			if root.Params[i].Value == newNode.Left.Value {
+			if root.Params[i].Value == newNode.Value {
 				declared = true
 				break
 			}
@@ -257,11 +329,86 @@ func symbolMan(root *Node, newNode *Node) bool {
 		} else {
 			isValid = true
 		}
+
+	case "ASSIGN":
+		for i := 0; i < len(root.Declared); i++ {
+			if root.Declared[i].Value == newNode.Left.Value {
+				declared = true
+				break
+			}
+		}
+
+		for i := 0; i < len(root.Params); i++ {
+			if root.Params[i].Value == newNode.Left.Value {
+				declared = true
+				break
+			}
+		}
+
+		if !declared {
+			isValid = false
+		} else {
+			isValid = true
+		}
+	case "IDENTIFIER":
+		for i := 0; i < len(root.Declared); i++ {
+			if root.Declared[i].Value == newNode.Value {
+				declared = true
+				break
+			}
+		}
+
+		for i := 0; i < len(root.Params); i++ {
+			if root.Params[i].Value == newNode.Value {
+				declared = true
+				break
+			}
+		}
+
+		if !declared {
+			isValid = false
+		} else {
+			isValid = true
+		}
+
 	default:
 		isValid = true
 	}
 
 	return isValid
+}
+
+func checkFunctionReturnType(root *Node, returnNode *Node) {
+
+	if root.DType == "void" {
+		fmt.Println("Unexpected return in function " + root.Value + " which is void of returns!")
+		os.Exit(3)
+	} else if returnNode.DType != root.DType {
+		fmt.Println("Returned variable " + returnNode.Value + " in " + root.Value + " does not match function return type!")
+		os.Exit(3)
+	}
+
+}
+
+func returnType(root *Node, searchedNode *Node) string {
+	var returnType string
+
+	for _, declared := range root.Declared {
+		if declared.Value == searchedNode.Value {
+			returnType = declared.DType
+			break
+		}
+	}
+
+	for _, params := range root.Params {
+		if params.Value == searchedNode.Value {
+			returnType = params.DType
+			break
+		}
+	}
+
+	return returnType
+
 }
 
 func symbolNode(name string, decltype string, dtype string) *Node {
@@ -277,7 +424,7 @@ func symbolNode(name string, decltype string, dtype string) *Node {
 func parseDecl(tokens []string, lineNumber int) *Node {
 	newNode := Node{
 		Type:  "DECLARATION",
-		DType: tokens[0],
+		DType: strings.ToUpper(tokens[0]),
 		Value: tokens[1],
 	}
 
@@ -288,13 +435,25 @@ func parseDecl(tokens []string, lineNumber int) *Node {
 	return &newNode
 }
 
+// Parse return declarations
+func parseReturn(tokens []string, lineNumber int, root *Node) *Node {
+	newNode := Node{
+		Type:  "RETURN",
+		Value: tokens[1],
+	}
+
+	newNode.DType = returnType(root, &newNode)
+
+	return &newNode
+}
+
 // Parse Function Declarations
 func parseFunc(tokens []string, lineNumber int) *Node {
 	var newNode Node
 	openParen := 0
 
 	newNode.Type = "FUNCTION_DECL"
-	newNode.DType = "void"
+	newNode.DType = "VOID"
 
 	if !isIdentifier(tokens[1]) {
 		fmt.Println("Expected function name declaration got " + tokens[1] + " on line " + strconv.Itoa(lineNumber))
@@ -328,7 +487,7 @@ func parseFunc(tokens []string, lineNumber int) *Node {
 	}
 
 	if isIdentifier(tokens[closeParenIndex+1]) {
-		newNode.DType = tokens[closeParenIndex+1]
+		newNode.DType = strings.ToUpper(tokens[closeParenIndex+1])
 	} else if tokens[closeParenIndex+1] != "{" {
 		fmt.Println("Expected \"{\" got " + tokens[closeParenIndex+1] + " on line " + strconv.Itoa(lineNumber))
 		os.Exit(3)
@@ -338,7 +497,7 @@ func parseFunc(tokens []string, lineNumber int) *Node {
 
 }
 
-func parseArray(tokens []string, lineNumber int) Node {
+func parseArray(tokens []string, lineNumber int, root *Node) Node {
 
 	newNode := Node{
 		Type:  "ARRAY",
@@ -362,23 +521,71 @@ func parseArray(tokens []string, lineNumber int) Node {
 	args := tokens[1:closeBracketIndex]
 
 	// Parse each element
-
 	for i := 0; i < (len(args)); i += 2 {
 		if args[i] == "," {
 			fmt.Println("Unexpected character \"" + args[i] + "\" in array setting on line " + strconv.Itoa(lineNumber))
 			os.Exit(3)
 		} else {
-			newNode.Body = append(newNode.Body, parseGeneric(args[i:i+1], lineNumber))
+			newNode.Body = append(newNode.Body, parseGeneric(args[i:i+1], lineNumber, root))
 		}
 	}
 
 	return newNode
 }
 
-func parseFunctionCall(tokens []string, lineNumber int) Node {
+func parseWrite(tokens []string, lineNumber int, root *Node) Node {
+	newNode := Node{
+		Type:  "FUNCTION_CALL",
+		Value: tokens[0], // The function name (e.g., 'write')
+	}
+
+	// Expect the second token to be an opening parenthesis
+	if tokens[1] != "(" {
+		fmt.Println("Expected \"(\" after function name, got " + tokens[1] + " on line " + strconv.Itoa(lineNumber))
+		os.Exit(3)
+	}
+
+	// Find the closing parenthesis
+	closeParenIndex := slices.Index(tokens, ")")
+	if closeParenIndex == -1 {
+		fmt.Println("Expected \")\" to close function call on line " + strconv.Itoa(lineNumber))
+		os.Exit(3)
+	}
+
+	// Extract the arguments between parentheses
+	args := tokens[2:closeParenIndex]
+
+	// Parse each argument and add it to the function's Params
+
+	if len(args) > 1 {
+		fmt.Println("Unexpected character \"" + args[0] + "\" in parameters call on line " + strconv.Itoa(lineNumber))
+		os.Exit(3)
+	} else {
+		newNode.Params = append(newNode.Params, parseGeneric(args[0:1], lineNumber, root))
+	}
+
+	return newNode
+}
+
+func parseFunctionCall(tokens []string, lineNumber int, root *Node) Node {
 	newNode := Node{
 		Type:  "FUNCTION_CALL",
 		Value: tokens[0], // The function name (e.g., 'print')
+	}
+
+	functionDeclared := false
+
+	for _, declared := range root.Declared {
+		if declared.Value == newNode.Value {
+			newNode.DType = declared.DType
+			functionDeclared = true
+			break
+		}
+	}
+
+	if !functionDeclared {
+		fmt.Println("Unrecognized function \"" + newNode.Value + "\"")
+		os.Exit(3)
 	}
 
 	// Expect the second token to be an opening parenthesis
@@ -404,7 +611,7 @@ func parseFunctionCall(tokens []string, lineNumber int) Node {
 			fmt.Println("Unexpected character \"" + args[i] + "\" in parameters call on line " + strconv.Itoa(lineNumber))
 			os.Exit(3)
 		} else {
-			newNode.Params = append(newNode.Params, parseGeneric(args[i:i+1], lineNumber))
+			newNode.Params = append(newNode.Params, parseGeneric(args[i:i+1], lineNumber, root))
 		}
 	}
 
@@ -555,7 +762,14 @@ func bisect(expression []string, character string, direction string) []string {
 	return tokens
 }
 
-func parseGeneric(tokens []string, lineNumber int) *Node {
+func operatorTypeComparison(node *Node) {
+	if node.Left.DType != node.Right.DType {
+		fmt.Println("Type mismatch between " + node.Left.Value + " (" + node.Left.DType + ") " + "and" + node.Right.Value + " (" + node.Right.DType + ") " + " Error: line " + strconv.Itoa(line))
+		os.Exit(3)
+	}
+}
+
+func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 
 	var newNode Node
 
@@ -565,50 +779,75 @@ func parseGeneric(tokens []string, lineNumber int) *Node {
 	if slices.Contains(tokens, "=") {
 		newNode = Node{
 			Type:  "ASSIGN",
-			DType: "CHAR",
+			DType: "OP",
 			Value: "=",
-			Left:  parseGeneric(bisect(tokens, "=", "left"), lineNumber),
-			Right: parseGeneric(bisect(tokens, "=", "right"), lineNumber),
+			Left:  parseGeneric(bisect(tokens, "=", "left"), lineNumber, root),
+			Right: parseGeneric(bisect(tokens, "=", "right"), lineNumber, root),
 		}
+
+		if newNode.Right.Value == "{}" {
+			expectedElementType := strings.ToUpper(strings.Split(newNode.Left.DType, "]")[1])
+
+			if newNode.Left.DType != "[]any" {
+				for _, element := range newNode.Right.Body {
+					if element.DType != expectedElementType {
+						fmt.Println("Array element " + element.Value + " does not match array type " + expectedElementType)
+						os.Exit(3)
+					}
+				}
+			}
+		} else if newNode.Right.DType != "OP" {
+			operatorTypeComparison(&newNode)
+		}
+
 	} else if slices.Contains(tokens, "*") {
 		newNode = Node{
 			Type:  "MULT",
-			DType: "CHAR",
+			DType: "OP",
 			Value: "*",
-			Left:  parseGeneric(bisect(tokens, "*", "left"), lineNumber),
-			Right: parseGeneric(bisect(tokens, "*", "right"), lineNumber),
+			Left:  parseGeneric(bisect(tokens, "*", "left"), lineNumber, root),
+			Right: parseGeneric(bisect(tokens, "*", "right"), lineNumber, root),
 		}
+
+		operatorTypeComparison(&newNode)
 
 	} else if slices.Contains(tokens, "/") {
 		newNode = Node{
 			Type:  "DIV",
-			DType: "CHAR",
+			DType: "OP",
 			Value: "/",
-			Left:  parseGeneric(bisect(tokens, "/", "left"), lineNumber),
-			Right: parseGeneric(bisect(tokens, "/", "right"), lineNumber),
+			Left:  parseGeneric(bisect(tokens, "/", "left"), lineNumber, root),
+			Right: parseGeneric(bisect(tokens, "/", "right"), lineNumber, root),
 		}
+
+		operatorTypeComparison(&newNode)
 
 	} else if slices.Contains(tokens, "+") {
 		newNode = Node{
 			Type:  "ADD",
-			DType: "CHAR",
+			DType: "OP",
 			Value: "+",
-			Left:  parseGeneric(bisect(tokens, "+", "left"), lineNumber),
-			Right: parseGeneric(bisect(tokens, "+", "right"), lineNumber),
+			Left:  parseGeneric(bisect(tokens, "+", "left"), lineNumber, root),
+			Right: parseGeneric(bisect(tokens, "+", "right"), lineNumber, root),
 		}
+
+		operatorTypeComparison(&newNode)
 
 	} else if slices.Contains(tokens, "-") {
 		newNode = Node{
 			Type:  "SUB",
-			DType: "CHAR",
+			DType: "OP",
 			Value: "-",
-			Left:  parseGeneric(bisect(tokens, "-", "left"), lineNumber),
-			Right: parseGeneric(bisect(tokens, "-", "right"), lineNumber),
+			Left:  parseGeneric(bisect(tokens, "-", "left"), lineNumber, root),
+			Right: parseGeneric(bisect(tokens, "-", "right"), lineNumber, root),
 		}
+
+		operatorTypeComparison(&newNode)
+
 	} else if slices.Contains(tokens, "(") && slices.Contains(tokens, ")") {
-		newNode = parseFunctionCall(tokens, line)
+		newNode = parseFunctionCall(tokens, line, root)
 	} else if slices.Contains(tokens, "{") && slices.Contains(tokens, "}") {
-		newNode = parseArray(tokens, line)
+		newNode = parseArray(tokens, line, root)
 	} else if slices.Contains(tokens, "[") && slices.Contains(tokens, "]") {
 		var index string
 		for _, token := range tokens {
@@ -616,7 +855,7 @@ func parseGeneric(tokens []string, lineNumber int) *Node {
 		}
 		newNode = Node{
 			Type:  "ARRAY_INDEX",
-			DType: "INDEX",
+			DType: "INT",
 			Value: index,
 		}
 	} else if slices.Contains(numbers, tokens[0]) {
@@ -626,13 +865,25 @@ func parseGeneric(tokens []string, lineNumber int) *Node {
 			Value: tokens[0],
 		}
 	} else if slices.Contains(letters, tokens[0]) {
+
 		newNode = Node{
 			Type:  "IDENTIFIER",
-			DType: "CHAR",
 			Value: tokens[0],
 		}
+
+		returnType := returnType(root, &newNode)
+
+		newNode.DType = returnType
+
+		isValid := symbolMan(root, &newNode)
+
+		if !isValid {
+			fmt.Println("Previously undeclared variable assignment: " + tokens[0] + " on line " + strconv.Itoa(line))
+			os.Exit(3)
+		}
+
 	} else {
-		fmt.Println("Unrecognized character \"" + tokens[0] + " \" on line " + strconv.Itoa(line))
+		fmt.Println("Unrecognized character \"" + tokens[0] + "\" on line " + strconv.Itoa(line))
 		os.Exit(3)
 
 	}

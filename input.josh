@@ -1,10 +1,15 @@
 int a = 2
 int b = 5
 int c = a + b
-func sum(int a, int b) {
+func sum(int a, int b) int {
     int c = b + a
-    c = z + a
+    int d = b + 2
+    d = d + c
+
+    return d
 }
 
 sum(a, b)
 []int d = {1, 2, 3}
+int e = d[0]
+write(e)
