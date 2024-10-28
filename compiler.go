@@ -38,9 +38,8 @@ func main() {
 	code := readLines(inputFile)
 	newRoot := parse(code, &root)
 	//traverseAST(newRoot.Body)
-	optimizer := NewOptimizer()
-	optimizedRoot := optimizer.Optimize(*newRoot)
-	printAST(&optimizedRoot, "", true) // Print optimized AST for verification
+	optimizedAST := optimizer(newRoot)
+	printAST(&optimizedAST)
 }
 
 func getFlags() string {
@@ -764,7 +763,7 @@ func bisect(expression []string, character string, direction string) []string {
 
 func operatorTypeComparison(node *Node) {
 	if node.Left.DType != node.Right.DType {
-		fmt.Println("Type mismatch between " + node.Left.Value + " (" + node.Left.DType + ") " + "and" + node.Right.Value + " (" + node.Right.DType + ") " + " Error: line " + strconv.Itoa(line))
+		fmt.Println("Type mismatch between " + node.Left.Value + " (" + node.Left.DType + ") " + "and " + node.Right.Value + " (" + node.Right.DType + ") " + " Error: line " + strconv.Itoa(line))
 		os.Exit(3)
 	}
 }
@@ -811,6 +810,8 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 
 		operatorTypeComparison(&newNode)
 
+		newNode.DType = newNode.Left.DType
+
 	} else if slices.Contains(tokens, "/") {
 		newNode = Node{
 			Type:  "DIV",
@@ -821,6 +822,8 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 		}
 
 		operatorTypeComparison(&newNode)
+
+		newNode.DType = newNode.Left.DType
 
 	} else if slices.Contains(tokens, "+") {
 		newNode = Node{
@@ -833,6 +836,8 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 
 		operatorTypeComparison(&newNode)
 
+		newNode.DType = newNode.Left.DType
+
 	} else if slices.Contains(tokens, "-") {
 		newNode = Node{
 			Type:  "SUB",
@@ -843,6 +848,8 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 		}
 
 		operatorTypeComparison(&newNode)
+
+		newNode.DType = newNode.Left.DType
 
 	} else if slices.Contains(tokens, "(") && slices.Contains(tokens, ")") {
 		newNode = parseFunctionCall(tokens, line, root)

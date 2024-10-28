@@ -2,163 +2,198 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 )
 
-// Optimizer struct to hold optimization-related methods.
-type Optimizer struct {
-	constants map[string]int  // Holds propagated constants
-	usedVars  map[string]bool // Tracks variable usage for dead code elimination
-}
-
-// NewOptimizer initializes the optimizer with maps for constants and variable usage.
-func NewOptimizer() *Optimizer {
-	return &Optimizer{
-		constants: make(map[string]int),
-		usedVars:  make(map[string]bool),
+func optimizer(root *Node) Node {
+	fmt.Println("Starting optimization...")
+	optimizedAST := Node{
+		Type:  "root",
+		DType: "",
+		Value: "",
 	}
+
+	for index, statement := range root.Body {
+		fmt.Printf("Processing statement %d: %s\n", index, statement.Value)
+		switch statement.Type {
+		case "ASSIGN":
+			fmt.Println("  Found ASSIGN statement.")
+			optimizedNode := fold(root, statement, index)
+			if optimizedNode != nil {
+				fmt.Printf("  ASSIGN optimized: %s = %s\n", optimizedNode.Left.Value, optimizedNode.Right.Value)
+				optimizedAST.Body = append(optimizedAST.Body, optimizedNode)
+			}
+		case "FUNCTION_CALL":
+			fmt.Println("  Found FUNCTION_CALL statement.")
+			if statement.Value == "write" {
+				fmt.Println("  Writing unoptimized FUNCTION_CALL statement.")
+				optimizedAST.Body = append(optimizedAST.Body, statement)
+			} else {
+				funcNode := searchForFunctions(root, index, statement.Value)
+				if funcNode != nil {
+					fmt.Printf("  Optimized function call found: %s\n", funcNode.Value)
+					optimizedAST.Body = append(optimizedAST.Body, funcNode)
+				} else {
+					fmt.Println("  No optimization found for FUNCTION_CALL.")
+				}
+			}
+		default:
+			fmt.Printf("  No optimization for statement of type %s\n", statement.Type)
+			optimizedAST.Body = append(optimizedAST.Body, statement)
+		}
+	}
+
+	fmt.Println("Optimization complete.")
+	return optimizedAST
 }
 
-// Optimize performs constant folding, propagation, and dead code elimination.
-func (opt *Optimizer) Optimize(root Node) Node {
-	// Perform the three optimizations
-	opt.constantPropagation(&root)
-	opt.constantFolding(&root)
-	opt.deadCodeElimination(&root)
-	return root
-}
-
-// constantPropagation replaces variables with their constant values.
-func (opt *Optimizer) constantPropagation(node *Node) {
+func fold(root *Node, node *Node, index int) *Node {
 	if node == nil {
-		return
+		fmt.Println("  fold: Received a nil node.")
+		return nil
 	}
 
-	// If it's an assignment, check if we can propagate constants
-	if node.Type == "ASSIGN" && node.Left != nil && node.Right != nil {
-		if node.Right.Type == "NUMBER" {
-			// Assigning a constant value to a variable
-			val, _ := strconv.Atoi(node.Right.Value)
-			opt.constants[node.Left.Value] = val
-		}
-	} else if node.Type == "IDENTIFIER" {
-		// If the node is a variable, replace it if we have a constant for it
-		if val, exists := opt.constants[node.Value]; exists {
-			node.Type = "NUMBER"
-			node.DType = "INT"
-			node.Value = strconv.Itoa(val)
-		}
-	}
-
-	// Recur on left and right children
-	opt.constantPropagation(node.Left)
-	opt.constantPropagation(node.Right)
-	for _, child := range node.Body {
-		opt.constantPropagation(child)
+	fmt.Printf("  Folding node %s with type %s\n", node.Value, node.Right.Type)
+	switch node.Right.Type {
+	case "ADD", "SUB", "MULT", "DIV":
+		fmt.Println("  Performing arithmetic folding.")
+		return handleArithmetic(root, node, index)
+	case "IDENTIFIER":
+		fmt.Printf("  Resolving identifier: %s\n", node.Right.Value)
+		resolvedNode := search(root, index, node.Right.Value)
+		return fold(root, resolvedNode, index)
+	case "FUNCTION_CALL":
+		fmt.Printf("  Resolving function call: %s\n", node.Right.Value)
+		funcNode := searchForFunctions(root, index, node.Right.Value)
+		return foldFunction(funcNode, index)
+	default:
+		fmt.Println("  No folding applied for unhandled node type.")
+		return node
 	}
 }
 
-// constantFolding evaluates constant expressions and replaces them with a single value.
-func (opt *Optimizer) constantFolding(node *Node) {
-	if node == nil {
-		return
+func handleArithmetic(root *Node, node *Node, index int) *Node {
+	fmt.Printf("  Handling arithmetic for node %s with operation %s\n", node.Value, node.Right.Type)
+	leftNode := node.Right.Left
+	rightNode := node.Right.Right
+
+	// Ensure left and right nodes are not nil
+	if leftNode == nil || rightNode == nil {
+		fmt.Println("  Arithmetic operation missing operands.")
+		return node
 	}
 
-	// If node is an ADD, try to fold it if both operands are constants
-	if node.Type == "ADD" && node.Left != nil && node.Right != nil {
-		if node.Left.Type == "NUMBER" && node.Right.Type == "NUMBER" {
-			// Perform the addition
-			leftVal, _ := strconv.Atoi(node.Left.Value)
-			rightVal, _ := strconv.Atoi(node.Right.Value)
-			node.Type = "NUMBER"
-			node.DType = "INT"
-			node.Value = strconv.Itoa(leftVal + rightVal)
-			node.Left = nil
-			node.Right = nil
+	// Resolve identifiers to their values, if necessary
+	if leftNode.Type == "IDENTIFIER" {
+		resolvedLeft := search(root, index, leftNode.Value)
+		fmt.Println(leftNode.Value)
+		if resolvedLeft != nil && resolvedLeft.Type == "NUMBER" {
+			fmt.Printf("  Resolved left identifier %s to %s\n", leftNode.Value, resolvedLeft.Value)
+			leftNode = resolvedLeft
+		}
+	}
+	if rightNode.Type == "IDENTIFIER" {
+		resolvedRight := search(root, index, rightNode.Value)
+		fmt.Println(rightNode.Value)
+		if resolvedRight != nil && resolvedRight.Type == "NUMBER" {
+			fmt.Printf("  Resolved right identifier %s to %s\n", rightNode.Value, resolvedRight.Value)
+			rightNode = resolvedRight
 		}
 	}
 
-	// Recur on left and right children
-	opt.constantFolding(node.Left)
-	opt.constantFolding(node.Right)
-	for _, child := range node.Body {
-		opt.constantFolding(child)
+	// Resolve identifiers to their values, if necessary
+	if leftNode.Type == "ADD" || leftNode.Type == "SUB" || leftNode.Type == "MULT" || leftNode.Type == "DIV" {
+		leftNode = handleArithmetic(root, leftNode, index)
 	}
-}
-
-// deadCodeElimination removes dead assignments by checking variable usage.
-func (opt *Optimizer) deadCodeElimination(node *Node) {
-	if node == nil {
-		return
+	if rightNode.Type == "ADD" || rightNode.Type == "SUB" || rightNode.Type == "MULT" || rightNode.Type == "DIV" {
+		rightNode = handleArithmetic(root, rightNode, index)
 	}
 
-	// Mark variables in function calls or return values as used
-	if node.Type == "FUNCTION_CALL" || node.Type == "RETURN" {
-		for _, param := range node.Params {
-			opt.usedVars[param.Value] = true
+	// After resolution, check if both nodes are numbers
+	if leftNode.Type == "NUMBER" && rightNode.Type == "NUMBER" {
+		leftVal, _ := strconv.Atoi(leftNode.Value)
+		rightVal, _ := strconv.Atoi(rightNode.Value)
+
+		switch node.Right.Type {
+		case "ADD":
+			node.Right.Value = strconv.Itoa(leftVal + rightVal)
+			fmt.Printf("  Folded ADD result: %s\n", node.Right.Value)
+		case "SUB":
+			node.Right.Value = strconv.Itoa(leftVal - rightVal)
+			fmt.Printf("  Folded SUB result: %s\n", node.Right.Value)
+		case "MULT":
+			node.Right.Value = strconv.Itoa(leftVal * rightVal)
+			fmt.Printf("  Folded MULT result: %s\n", node.Right.Value)
+		case "DIV":
+			if rightVal == 0 {
+				fmt.Println("  Error: Division by zero!")
+				os.Exit(3)
+			}
+			node.Right.Value = strconv.Itoa(leftVal / rightVal)
+			fmt.Printf("  Folded DIV result: %s\n", node.Right.Value)
 		}
-	}
 
-	// Check assignments; if a variable is never used, mark as dead
-	if node.Type == "ASSIGN" && node.Left != nil && node.Left.Type == "IDENTIFIER" {
-		varName := node.Left.Value
-		if !opt.usedVars[varName] {
-			node.Type = "NOP" // Mark as no-op to indicate dead code
-		}
-		// Mark right side variables as used if they are identifiers
-		if node.Right != nil && node.Right.Type == "IDENTIFIER" {
-			opt.usedVars[node.Right.Value] = true
-		}
-	}
+		// Update the node to represent a single number after folding
+		node.Right.Type = "NUMBER"
+		node.Right.DType = "INT"
+		node.Right.Left = nil
+		node.Right.Right = nil
 
-	// Recur on children and update used variables map
-	opt.deadCodeElimination(node.Left)
-	opt.deadCodeElimination(node.Right)
-	for _, child := range node.Body {
-		opt.deadCodeElimination(child)
-	}
-}
+		return node
 
-// printAST prints the AST for debugging.
-// Adapted printNode function for displaying the optimized AST
-func printAST(node *Node, prefix string, isTail bool) {
-	// Construct the current node's details (Type, DType, Value)
-	nodeRepresentation := fmt.Sprintf("%s [Type: %s, DType: %s, Value: %s]", node.Value, node.Type, node.DType, node.Value)
-
-	// Print the node, with graphical tree branches (└── or ├──)
-	fmt.Printf("%s%s%s\n", prefix, getBranch(isTail), nodeRepresentation)
-
-	// Prepare the prefix for children
-	newPrefix := prefix
-	if isTail {
-		newPrefix += "    " // For the last child, indent
 	} else {
-		newPrefix += "│   " // For other children, continue the branch
+		fmt.Println("  Operands are not both numbers; cannot fold.")
 	}
+	return node
+}
 
-	// Handle Params, if any
-	if len(node.Params) > 0 {
-		fmt.Println(newPrefix + "Params:")
-		for i := 0; i < len(node.Params); i++ {
-			printNode(node.Params[i], newPrefix, i == len(node.Params)-1)
+func search(root *Node, searchBehind int, value string) *Node {
+	fmt.Printf("  Searching for identifier %s in AST.\n", value)
+	for i := searchBehind - 1; i >= 0; i-- {
+		if root.Body[i].Left.Value == value {
+			fmt.Printf("  Identifier %s found in AST.\n", value)
+			return root.Body[i].Right
 		}
 	}
+	fmt.Printf("  Identifier %s not found in AST.\n", value)
+	return nil
+}
 
-	// Handle Body, if any
-	if len(node.Body) > 0 {
-		fmt.Println(newPrefix + "Body:")
-		for i := 0; i < len(node.Body); i++ {
-			printNode(node.Body[i], newPrefix, i == len(node.Body)-1)
+func searchForFunctions(root *Node, searchBehind int, value string) *Node {
+	fmt.Printf("  Searching for function %s in AST.\n", value)
+	for i := searchBehind - 1; i >= 0; i-- {
+		if root.Body[i].Value == value && root.Body[i].Type == "FUNCTION_DECL" {
+			fmt.Printf("  Function %s found in AST.\n", value)
+			return root.Body[i]
 		}
 	}
+	fmt.Printf("  Function %s not found in AST.\n", value)
+	return nil
+}
 
-	// Handle Left and Right children (for operations like +, -, *, /)
-	if node.Left != nil {
-		fmt.Println(newPrefix + "Left:")
-		printNode(node.Left, newPrefix, false)
+func foldFunction(node *Node, index int) *Node {
+	if node == nil {
+		fmt.Println("  foldFunction: Received a nil node.")
+		return nil
 	}
-	if node.Right != nil {
-		fmt.Println(newPrefix + "Right:")
-		printNode(node.Right, newPrefix, true)
+
+	fmt.Printf("  Folding function %s\n", node.Value)
+	foldedFunction := &Node{}
+	for _, statement := range node.Body {
+		result := fold(node, statement, index)
+		if result != nil {
+			fmt.Printf("  Statement folded: %s\n", result.Value)
+			foldedFunction.Body = append(foldedFunction.Body, result)
+		}
+	}
+	return foldedFunction
+}
+
+// Print function to display the optimized AST
+func printAST(root *Node) {
+	fmt.Println("Printing AST...")
+	if root != nil {
+		printNode(root, "", true)
 	}
 }
