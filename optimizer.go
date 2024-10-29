@@ -42,6 +42,7 @@ func optimizer(root *Node) Node {
 			fmt.Printf("  No optimization for statement of type %s\n", statement.Type)
 			optimizedAST.Body = append(optimizedAST.Body, statement)
 		}
+		index++
 	}
 
 	fmt.Println("Optimization complete.")
@@ -104,10 +105,10 @@ func handleArithmetic(root *Node, node *Node, index int) *Node {
 
 	// Resolve identifiers to their values, if necessary
 	if leftNode.Type == "ADD" || leftNode.Type == "SUB" || leftNode.Type == "MULT" || leftNode.Type == "DIV" {
-		leftNode = handleArithmetic(root, leftNode, index)
+		leftNode = fold(root, leftNode, index)
 	}
 	if rightNode.Type == "ADD" || rightNode.Type == "SUB" || rightNode.Type == "MULT" || rightNode.Type == "DIV" {
-		rightNode = handleArithmetic(root, rightNode, index)
+		rightNode = fold(root, rightNode, index)
 	}
 
 	// After resolution, check if both nodes are numbers
