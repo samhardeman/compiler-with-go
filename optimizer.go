@@ -1,199 +1,227 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
-func optimizer(root *Node) Node {
+func optimizer(root *Node) *Node {
 	fmt.Println("Starting optimization...")
-	optimizedAST := Node{
-		Type:  "root",
-		DType: "",
-		Value: "",
-	}
+	optimizedAST := *root
 
-	for index, statement := range root.Body {
-		fmt.Printf("Processing statement %d: %s\n", index, statement.Value)
-		switch statement.Type {
-		case "ASSIGN":
-			fmt.Println("  Found ASSIGN statement.")
-			optimizedNode := fold(root, statement, index)
-			if optimizedNode != nil {
-				fmt.Printf("  ASSIGN optimized: %s = %s\n", optimizedNode.Left.Value, optimizedNode.Right.Value)
-				optimizedAST.Body = append(optimizedAST.Body, optimizedNode)
-			}
-		case "FUNCTION_CALL":
-			fmt.Println("  Found FUNCTION_CALL statement.")
-			if statement.Value == "write" {
-				fmt.Println("  Writing unoptimized FUNCTION_CALL statement.")
-				optimizedAST.Body = append(optimizedAST.Body, statement)
-			} else {
-				funcNode := searchForFunctions(root, index, statement.Value)
-				if funcNode != nil {
-					fmt.Printf("  Optimized function call found: %s\n", funcNode.Value)
-					optimizedAST.Body = append(optimizedAST.Body, funcNode)
-				} else {
-					fmt.Println("  No optimization found for FUNCTION_CALL.")
-				}
-			}
-		default:
-			fmt.Printf("  No optimization for statement of type %s\n", statement.Type)
-			optimizedAST.Body = append(optimizedAST.Body, statement)
-		}
-	}
+	// Create a map to keep track of constants for propagation
+	constants := make(map[string]string)
+
+	// Perform optimization on the AST
+	optimizedAST.Body = optimizeStatements(root.Body, constants)
 
 	fmt.Println("Optimization complete.")
-	return optimizedAST
+	return &optimizedAST
 }
 
-func fold(root *Node, node *Node, index int) *Node {
-	if node == nil {
-		fmt.Println("  fold: Received a nil node.")
-		return nil
-	}
-
-	fmt.Printf("  Folding node %s with type %s\n", node.Value, node.Right.Type)
-	switch node.Right.Type {
-	case "ADD", "SUB", "MULT", "DIV":
-		fmt.Println("  Performing arithmetic folding.")
-		return handleArithmetic(root, node, index)
-	case "IDENTIFIER":
-		fmt.Printf("  Resolving identifier: %s\n", node.Right.Value)
-		resolvedNode := search(root, index, node.Right.Value)
-		return fold(root, resolvedNode, index)
-	case "FUNCTION_CALL":
-		fmt.Printf("  Resolving function call: %s\n", node.Right.Value)
-		funcNode := searchForFunctions(root, index, node.Right.Value)
-		return foldFunction(funcNode, index)
-	default:
-		fmt.Println("  No folding applied for unhandled node type.")
-		return node
-	}
-}
-
-func handleArithmetic(root *Node, node *Node, index int) *Node {
-	fmt.Printf("  Handling arithmetic for node %s with operation %s\n", node.Value, node.Right.Type)
-	leftNode := node.Right.Left
-	rightNode := node.Right.Right
-
-	// Ensure left and right nodes are not nil
-	if leftNode == nil || rightNode == nil {
-		fmt.Println("  Arithmetic operation missing operands.")
-		return node
-	}
-
-	// Resolve identifiers to their values, if necessary
-	if leftNode.Type == "IDENTIFIER" {
-		resolvedLeft := search(root, index, leftNode.Value)
-		fmt.Println(leftNode.Value)
-		if resolvedLeft != nil && resolvedLeft.Type == "NUMBER" {
-			fmt.Printf("  Resolved left identifier %s to %s\n", leftNode.Value, resolvedLeft.Value)
-			leftNode = resolvedLeft
-		}
-	}
-	if rightNode.Type == "IDENTIFIER" {
-		resolvedRight := search(root, index, rightNode.Value)
-		fmt.Println(rightNode.Value)
-		if resolvedRight != nil && resolvedRight.Type == "NUMBER" {
-			fmt.Printf("  Resolved right identifier %s to %s\n", rightNode.Value, resolvedRight.Value)
-			rightNode = resolvedRight
-		}
-	}
-
-	// Resolve identifiers to their values, if necessary
-	if leftNode.Type == "ADD" || leftNode.Type == "SUB" || leftNode.Type == "MULT" || leftNode.Type == "DIV" {
-		leftNode = handleArithmetic(root, leftNode, index)
-	}
-	if rightNode.Type == "ADD" || rightNode.Type == "SUB" || rightNode.Type == "MULT" || rightNode.Type == "DIV" {
-		rightNode = handleArithmetic(root, rightNode, index)
-	}
-
-	// After resolution, check if both nodes are numbers
-	if leftNode.Type == "NUMBER" && rightNode.Type == "NUMBER" {
-		leftVal, _ := strconv.Atoi(leftNode.Value)
-		rightVal, _ := strconv.Atoi(rightNode.Value)
-
-		switch node.Right.Type {
-		case "ADD":
-			node.Right.Value = strconv.Itoa(leftVal + rightVal)
-			fmt.Printf("  Folded ADD result: %s\n", node.Right.Value)
-		case "SUB":
-			node.Right.Value = strconv.Itoa(leftVal - rightVal)
-			fmt.Printf("  Folded SUB result: %s\n", node.Right.Value)
-		case "MULT":
-			node.Right.Value = strconv.Itoa(leftVal * rightVal)
-			fmt.Printf("  Folded MULT result: %s\n", node.Right.Value)
-		case "DIV":
-			if rightVal == 0 {
-				fmt.Println("  Error: Division by zero!")
-				os.Exit(3)
+func optimizeStatements(statements []*Node, constants map[string]string) []*Node {
+	var optimized []*Node
+	for _, stmt := range statements {
+		switch stmt.Type {
+		case "ASSIGN":
+			optimizedStmt := foldAndPropagate(stmt, constants)
+			optimized = append(optimized, optimizedStmt)
+		case "FUNCTION_DECL":
+			// Create a new scope for constants in functions
+			funcConstants := make(map[string]string)
+			stmt.Body = optimizeStatements(stmt.Body, funcConstants)
+			optimized = append(optimized, stmt)
+		case "FUNCTION_CALL":
+			// Optimize function call arguments
+			for i, arg := range stmt.Params {
+				stmt.Params[i] = evaluateExpression(arg, constants)
 			}
-			node.Right.Value = strconv.Itoa(leftVal / rightVal)
-			fmt.Printf("  Folded DIV result: %s\n", node.Right.Value)
+			optimized = append(optimized, stmt)
+		default:
+			optimized = append(optimized, stmt)
 		}
+	}
+	return optimized
+}
 
-		// Update the node to represent a single number after folding
-		node.Right.Type = "NUMBER"
-		node.Right.DType = "INT"
-		node.Right.Left = nil
-		node.Right.Right = nil
+func foldAndPropagate(node *Node, constants map[string]string) *Node {
+	if node.Type == "ASSIGN" && node.Right != nil {
+		// Evaluate the right side of the assignment
+		node.Right = evaluateExpression(node.Right, constants)
 
-		return node
-
-	} else {
-		fmt.Println("  Operands are not both numbers; cannot fold.")
+		// If the right side is a NUMBER, add it to constants for propagation
+		if node.Right.Type == "NUMBER" {
+			constants[node.Left.Value] = node.Right.Value
+		} else {
+			// Remove from constants if it's reassigned to a non-constant
+			delete(constants, node.Left.Value)
+		}
 	}
 	return node
 }
 
-func search(root *Node, searchBehind int, value string) *Node {
-	fmt.Printf("  Searching for identifier %s in AST.\n", value)
-	for i := searchBehind - 1; i >= 0; i-- {
-		if root.Body[i].Left.Value == value {
-			fmt.Printf("  Identifier %s found in AST.\n", value)
-			return root.Body[i].Right
-		}
-	}
-	fmt.Printf("  Identifier %s not found in AST.\n", value)
-	return nil
-}
-
-func searchForFunctions(root *Node, searchBehind int, value string) *Node {
-	fmt.Printf("  Searching for function %s in AST.\n", value)
-	for i := searchBehind - 1; i >= 0; i-- {
-		if root.Body[i].Value == value && root.Body[i].Type == "FUNCTION_DECL" {
-			fmt.Printf("  Function %s found in AST.\n", value)
-			return root.Body[i]
-		}
-	}
-	fmt.Printf("  Function %s not found in AST.\n", value)
-	return nil
-}
-
-func foldFunction(node *Node, index int) *Node {
+func evaluateExpression(node *Node, constants map[string]string) *Node {
 	if node == nil {
-		fmt.Println("  foldFunction: Received a nil node.")
 		return nil
 	}
 
-	fmt.Printf("  Folding function %s\n", node.Value)
-	foldedFunction := &Node{}
-	for _, statement := range node.Body {
-		result := fold(node, statement, index)
-		if result != nil {
-			fmt.Printf("  Statement folded: %s\n", result.Value)
-			foldedFunction.Body = append(foldedFunction.Body, result)
+	switch node.Type {
+	case "NUMBER":
+		// Return number as is
+		return node
+	case "IDENTIFIER":
+		// Replace identifier with constant value if available
+		if val, found := constants[node.Value]; found {
+			return &Node{
+				Type:  "NUMBER",
+				DType: node.DType,
+				Value: val,
+			}
+		}
+		return node
+	}
+
+	// Recursively evaluate left and right children
+	if node.Left != nil {
+		node.Left = evaluateExpression(node.Left, constants)
+	}
+	if node.Right != nil {
+		node.Right = evaluateExpression(node.Right, constants)
+	}
+
+	// If both children are numbers, perform the operation
+	if node.Left != nil && node.Right != nil &&
+		node.Left.Type == "NUMBER" && node.Right.Type == "NUMBER" {
+		leftVal, _ := strconv.Atoi(node.Left.Value)
+		rightVal, _ := strconv.Atoi(node.Right.Value)
+		var result int
+		switch node.Type {
+		case "ADD":
+			result = leftVal + rightVal
+		case "SUB":
+			result = leftVal - rightVal
+		case "MULT":
+			result = leftVal * rightVal
+		case "DIV":
+			if rightVal == 0 {
+				fmt.Println("Error: Division by zero!")
+				os.Exit(3)
+			}
+			result = leftVal / rightVal
+		}
+		return &Node{
+			Type:  "NUMBER",
+			DType: "INT",
+			Value: strconv.Itoa(result),
 		}
 	}
-	return foldedFunction
+
+	return node
 }
 
-// Print function to display the optimized AST
-func printAST(root *Node) {
-	fmt.Println("Printing AST...")
-	if root != nil {
-		printNode(root, "", true)
+// Function to generate optimized TAC and write to a file
+func optimize_tac(root *Node, filename string) {
+	file, err := os.Create(filename)
+	if err != nil {
+		fmt.Printf("Error creating optimized TAC file: %v\n", err)
+		os.Exit(3)
+	}
+	defer file.Close()
+
+	writer := bufio.NewWriter(file)
+	generateOptimizedTAC(root, writer)
+	writer.Flush()
+}
+
+func generateOptimizedTAC(node *Node, writer *bufio.Writer) {
+	if node == nil {
+		return
+	}
+
+	switch node.Type {
+	case "ASSIGN":
+		// Generate TAC for assignment
+		left := node.Left.Value
+		right := generateOptimizedExpressionTAC(node.Right, writer)
+		line := fmt.Sprintf("%s = %s\n", left, right)
+		writer.WriteString(line)
+	case "FUNCTION_DECL":
+		// Handle function declaration
+		writer.WriteString(fmt.Sprintf("func %s:\n", node.Value))
+		for _, stmt := range node.Body {
+			generateOptimizedTAC(stmt, writer)
+		}
+		writer.WriteString("end func\n")
+	case "FUNCTION_CALL":
+		// Handle function call with arguments
+		args := []string{}
+		for _, param := range node.Params {
+			arg := generateOptimizedExpressionTAC(param, writer)
+			args = append(args, arg)
+		}
+		line := fmt.Sprintf("call %s %s\n", node.Value, strings.Join(args, ", "))
+		writer.WriteString(line)
+	case "RETURN":
+		// Handle return statement
+		expr := generateOptimizedExpressionTAC(node.Right, writer)
+		writer.WriteString(fmt.Sprintf("return %s\n", expr))
+	default:
+		// Handle other node types if necessary
+	}
+
+	// Recursively generate TAC for child nodes
+	if node.Left != nil {
+		generateOptimizedTAC(node.Left, writer)
+	}
+	if node.Right != nil {
+		generateOptimizedTAC(node.Right, writer)
+	}
+	for _, child := range node.Body {
+		generateOptimizedTAC(child, writer)
+	}
+}
+
+func generateOptimizedExpressionTAC(node *Node, writer *bufio.Writer) string {
+	if node == nil {
+		return ""
+	}
+
+	switch node.Type {
+	case "NUMBER", "IDENTIFIER":
+		return node.Value
+	case "ADD", "SUB", "MULT", "DIV":
+		left := generateOptimizedExpressionTAC(node.Left, writer)
+		right := generateOptimizedExpressionTAC(node.Right, writer)
+		tempVar := getOptimizedTempVar()
+		line := fmt.Sprintf("%s = %s %s %s\n", tempVar, left, getOperatorSymbol(node.Type), right)
+		writer.WriteString(line)
+		return tempVar
+	default:
+		return ""
+	}
+}
+
+var optimizedTempVarCounter int
+
+func getOptimizedTempVar() string {
+	optimizedTempVarCounter++
+	return fmt.Sprintf("opt_t%d", optimizedTempVarCounter)
+}
+
+func getOperatorSymbol(nodeType string) string {
+	switch nodeType {
+	case "ADD":
+		return "+"
+	case "SUB":
+		return "-"
+	case "MULT":
+		return "*"
+	case "DIV":
+		return "/"
+	default:
+		return ""
 	}
 }

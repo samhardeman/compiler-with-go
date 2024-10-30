@@ -34,22 +34,36 @@ var line int
 func main() {
 	line++
 	root := Node{}
-	var inputFile string = getFlags()
+	inputFile := getFlags()
 	code := readLines(inputFile)
 	newRoot := parse(code, &root)
-	//traverseAST(newRoot.Body)
+
+	// Print the AST
+	fmt.Println("Abstract Syntax Tree:")
+	traverseAST(newRoot.Body)
+
+	// Print the symbol table
+	fmt.Println("\nSymbol Table:")
+	printSymbolTable(newRoot, "")
+
+	// Generate TAC and write to output.tac
+	create_tac(newRoot, "output.tac")
+
+	// Optimize the AST
 	optimizedAST := optimizer(newRoot)
-	printAST(&optimizedAST)
+
+	// Generate optimized TAC and write to optimized_output.tac
+	optimize_tac(optimizedAST, "optimized_output.tac")
 }
 
 func getFlags() string {
 	inputFile := flag.String("file", "", "")
 	flag.Parse()
-	if string(*inputFile) == "" {
-		fmt.Printf("no file to compile provided")
+	if *inputFile == "" {
+		fmt.Printf("No file to compile provided")
 		os.Exit(3)
 	}
-	return string(*inputFile)
+	return *inputFile
 }
 
 // read lines
@@ -657,60 +671,62 @@ func splitStringInPlace(arr *[]string) {
 	*arr = result
 }
 
-func traverseAST(root []*Node) {
-	for i := 0; i < len(root); i++ {
-		printNode(root[i], "", true)
+func traverseAST(nodes []*Node) {
+	for i, node := range nodes {
+		isLast := i == len(nodes)-1
+		printNode(node, "", isLast)
 	}
 }
 
 func printNode(node *Node, prefix string, isTail bool) {
-	// Construct the current node's details (Type, DType, Value)
-	nodeRepresentation := fmt.Sprintf("%s [Type: %s, DType: %s, Value: %s]", node.Value, node.Type, node.DType, node.Value)
+	// Print the current node
+	fmt.Printf("%s%s [Type: %s, DType: %s, Value: %s]\n",
+		prefix, getBranch(isTail), node.Type, node.DType, node.Value)
 
-	// Print the node, with graphical tree branches (└── or ├──)
-	fmt.Printf("%s%s%s\n", prefix, getBranch(isTail), nodeRepresentation)
-
-	// Prepare the prefix for children
-	newPrefix := prefix
+	// Prepare the prefix for child nodes
+	childPrefix := prefix
 	if isTail {
-		newPrefix += "    " // For the last child, indent
+		childPrefix += "    "
 	} else {
-		newPrefix += "│   " // For other children, continue the branch
+		childPrefix += "│   "
 	}
 
-	// Handle Params, if any
+	// Print Declared symbols in this node (if any)
+	if len(node.Declared) > 0 {
+		fmt.Printf("%s%sDeclared Symbols:\n", childPrefix, getBranch(false))
+		for i, decl := range node.Declared {
+			isLastDecl := i == len(node.Declared)-1
+			printNode(decl, childPrefix+"    ", isLastDecl)
+		}
+	}
+
+	// Print Parameters (if any)
 	if len(node.Params) > 0 {
-		fmt.Println(newPrefix + "Params:")
-		for i := 0; i < len(node.Params); i++ {
-			printNode(node.Params[i], newPrefix, i == len(node.Params)-1)
+		fmt.Printf("%s%sParameters:\n", childPrefix, getBranch(false))
+		for i, param := range node.Params {
+			isLastParam := i == len(node.Params)-1
+			printNode(param, childPrefix+"    ", isLastParam)
 		}
 	}
 
-	// Handle Body, if any
+	// Print Body (if any)
 	if len(node.Body) > 0 {
-		fmt.Println(newPrefix + "Body:")
-		for i := 0; i < len(node.Body); i++ {
-			printNode(node.Body[i], newPrefix, i == len(node.Body)-1)
+		fmt.Printf("%s%sBody:\n", childPrefix, getBranch(false))
+		for i, child := range node.Body {
+			isLastChild := i == len(node.Body)-1
+			printNode(child, childPrefix+"    ", isLastChild)
 		}
 	}
 
-	// Handle Left and Right children (for operations like +, -, *, /)
+	// Print Left and Right nodes (if any)
 	if node.Left != nil {
-		fmt.Println(newPrefix + "Left:")
-		printNode(node.Left, newPrefix, false)
+		fmt.Printf("%s%sLeft:\n", childPrefix, getBranch(false))
+		printNode(node.Left, childPrefix+"    ", false)
 	}
 	if node.Right != nil {
-		fmt.Println(newPrefix + "Right:")
-		printNode(node.Right, newPrefix, true)
+		fmt.Printf("%s%sRight:\n", childPrefix, getBranch(true))
+		printNode(node.Right, childPrefix+"    ", true)
 	}
-}
-
-// getBranch returns the appropriate branch characters for the tree
-func getBranch(isTail bool) string {
-	if isTail {
-		return "└── "
-	}
-	return "├── "
 }
 
 func findEndLine(chunk []string) int {
@@ -896,4 +912,110 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 	}
 
 	return &newNode
+}
+
+func create_tac(root *Node, filename string) {
+	file, err := os.Create(filename)
+	if err != nil {
+		fmt.Printf("Error creating TAC file: %v\n", err)
+		os.Exit(3)
+	}
+	defer file.Close()
+
+	writer := bufio.NewWriter(file)
+	generateTAC(root, writer)
+	writer.Flush()
+}
+
+func generateTAC(node *Node, writer *bufio.Writer) {
+	if node == nil {
+		return
+	}
+
+	switch node.Type {
+	case "ASSIGN":
+		// Generate TAC for assignment
+		left := node.Left.Value
+		right := generateExpressionTAC(node.Right, writer)
+		line := fmt.Sprintf("%s = %s\n", left, right)
+		writer.WriteString(line)
+	case "FUNCTION_DECL":
+		// Handle function declaration
+		writer.WriteString(fmt.Sprintf("func %s:\n", node.Value))
+		for _, stmt := range node.Body {
+			generateTAC(stmt, writer)
+		}
+		writer.WriteString("end func\n")
+	case "FUNCTION_CALL":
+		// Handle function call
+		writer.WriteString(fmt.Sprintf("call %s\n", node.Value))
+	case "RETURN":
+		// Handle return statement
+		writer.WriteString(fmt.Sprintf("return %s\n", node.Value))
+	default:
+		// Handle other node types if necessary
+	}
+
+	// Recursively generate TAC for child nodes
+	if node.Left != nil {
+		generateTAC(node.Left, writer)
+	}
+	if node.Right != nil {
+		generateTAC(node.Right, writer)
+	}
+	for _, child := range node.Body {
+		generateTAC(child, writer)
+	}
+}
+
+func generateExpressionTAC(node *Node, writer *bufio.Writer) string {
+	if node == nil {
+		return ""
+	}
+
+	switch node.Type {
+	case "NUMBER", "IDENTIFIER":
+		return node.Value
+	case "ADD", "SUB", "MULT", "DIV":
+		left := generateExpressionTAC(node.Left, writer)
+		right := generateExpressionTAC(node.Right, writer)
+		tempVar := getTempVar()
+		line := fmt.Sprintf("%s = %s %s %s\n", tempVar, left, node.Value, right)
+		writer.WriteString(line)
+		return tempVar
+	default:
+		return ""
+	}
+}
+
+var tempVarCounter int
+
+func getTempVar() string {
+	tempVarCounter++
+	return fmt.Sprintf("t%d", tempVarCounter)
+}
+func printSymbolTable(node *Node, indent string) {
+	if node == nil {
+		return
+	}
+
+	// Print the symbols declared at this node's scope
+	if len(node.Declared) > 0 {
+		fmt.Printf("%sScope (%s):\n", indent, node.Value)
+		for _, sym := range node.Declared {
+			fmt.Printf("%s    Name: %s, Type: %s, DType: %s\n",
+				indent, sym.Value, sym.Type, sym.DType)
+		}
+	}
+
+	// Recursively print symbol tables of child nodes
+	for _, child := range node.Body {
+		printSymbolTable(child, indent+"    ")
+	}
+}
+func getBranch(isTail bool) string {
+	if isTail {
+		return "└── "
+	}
+	return "├── "
 }
