@@ -22,6 +22,8 @@ type Node struct {
 	Body     []*Node
 	Left     *Node
 	Right    *Node
+	Elements []*Node // For array elements
+	Index    *Node   // For array indexing
 }
 
 type Symbol struct {
@@ -437,18 +439,28 @@ func symbolNode(name string, decltype string, dtype string) *Node {
 func parseDecl(tokens []string, lineNumber int) *Node {
 	newNode := Node{
 		Type:  "DECLARATION",
-		DType: strings.ToUpper(tokens[0]),
-		Value: tokens[1],
+		Value: tokens[len(tokens)-1],
 	}
 
-	if !isIdentifier(tokens[1]) {
-		fmt.Println("Expected variable name declaration got " + tokens[1] + " on line " + strconv.Itoa(lineNumber))
+	if strings.HasPrefix(tokens[0], "int") || strings.HasPrefix(tokens[0], "string") || strings.HasPrefix(tokens[0], "char") {
+		newNode.DType = strings.ToUpper(tokens[0])
+	} else if tokens[0] == "[" && tokens[1] == "]" {
+		// Handling array declarations
+		baseType := strings.ToUpper(tokens[2])
+		newNode.DType = "[]" + baseType
+		newNode.Type = "ARRAY_DECLARATION"
+	} else {
+		fmt.Println("Unknown type in declaration on line " + strconv.Itoa(lineNumber))
+		os.Exit(3)
+	}
+
+	if !isIdentifier(newNode.Value) {
+		fmt.Println("Expected variable name declaration got " + newNode.Value + " on line " + strconv.Itoa(lineNumber))
 		os.Exit(3)
 	}
 	return &newNode
 }
 
-// Parse return declarations
 func parseReturn(tokens []string, lineNumber int, root *Node) *Node {
 	newNode := Node{
 		Type:  "RETURN",
@@ -654,10 +666,9 @@ func isIdentifier(word string) bool {
 
 // SplitStringInPlace splits mixed strings (like "add(int" or "b)") in the array in place
 func splitStringInPlace(arr *[]string) {
-	// Define a regex pattern to match sequences of letters, digits, or special characters, including arithmetic operators and equal signs
-	pattern := regexp.MustCompile(`[a-zA-Z0-9]+|[(){}[\];,+\-*/%=<>!]`)
+	// Define a regex pattern to match numbers, identifiers, and operators
+	pattern := regexp.MustCompile(`\d+(\.\d+)?|\w+|[(){}[\];,+\-*/%=<>!]`)
 
-	// Create a new slice to store the modified array
 	var result []string
 
 	for _, str := range *arr {
@@ -815,6 +826,8 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 			operatorTypeComparison(&newNode)
 		}
 
+	} else if slices.Contains(tokens, "{") && slices.Contains(tokens, "}") {
+		newNode = parseArrayInitialization(tokens, lineNumber, root)
 	} else if slices.Contains(tokens, "*") {
 		newNode = Node{
 			Type:  "MULT",
@@ -1018,4 +1031,50 @@ func getBranch(isTail bool) string {
 		return "└── "
 	}
 	return "├── "
+}
+
+// Array shit that really works
+func parseArrayInitialization(tokens []string, lineNumber int, root *Node) Node {
+	newNode := Node{
+		Type:     "ARRAY_INITIALIZATION",
+		Value:    "{}",
+		Elements: []*Node{},
+	}
+
+	// Extract elements between braces
+	startIndex := slices.Index(tokens, "{")
+	endIndex := slices.Index(tokens, "}")
+
+	if startIndex == -1 || endIndex == -1 || endIndex <= startIndex {
+		fmt.Println("Invalid array initialization on line " + strconv.Itoa(lineNumber))
+		os.Exit(3)
+	}
+
+	elementsTokens := tokens[startIndex+1 : endIndex]
+	elements := parseArrayElements(elementsTokens, lineNumber, root)
+	newNode.Elements = elements
+
+	return newNode
+}
+func parseArrayElements(tokens []string, lineNumber int, root *Node) []*Node {
+	var elements []*Node
+	currentElementTokens := []string{}
+
+	for _, token := range tokens {
+		if token == "," {
+			elementNode := parseGeneric(currentElementTokens, lineNumber, root)
+			elements = append(elements, elementNode)
+			currentElementTokens = []string{}
+		} else {
+			currentElementTokens = append(currentElementTokens, token)
+		}
+	}
+
+	// Add the last element
+	if len(currentElementTokens) > 0 {
+		elementNode := parseGeneric(currentElementTokens, lineNumber, root)
+		elements = append(elements, elementNode)
+	}
+
+	return elements
 }
