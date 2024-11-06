@@ -18,11 +18,11 @@ func optimizer(root *Node) Node {
 		fmt.Printf("Processing statement %d: %s\n", index, statement.Value)
 		switch statement.Type {
 		case "ASSIGN":
-			fmt.Println("  Found ASSIGN statement.")
+			fmt.Println("Found ASSIGN statement.")
 			optimizedNode := fold(root, statement.Right, index)
 			statement.Right = optimizedNode
 			if optimizedNode != nil {
-				fmt.Printf("  ASSIGN optimized: %s = %s\n", statement.Value, optimizedNode.Value)
+				fmt.Printf("ASSIGN optimized: %s = %s\n", statement.Value, optimizedNode.Value)
 				optimizedAST.Body = append(optimizedAST.Body, statement)
 			}
 		case "FUNCTION_CALL":
@@ -41,7 +41,6 @@ func optimizer(root *Node) Node {
 			}
 		default:
 			fmt.Printf("  No optimization for statement of type %s\n", statement.Type)
-			optimizedAST.Body = append(optimizedAST.Body, statement)
 		}
 		index++
 	}
@@ -59,28 +58,49 @@ func fold(root *Node, node *Node, index int) *Node {
 	fmt.Printf("  Folding node %s with type %s\n", node.Value, node.Type)
 	switch node.Type {
 	case "ADD", "SUB", "MULT", "DIV":
-		fmt.Println("  Performing arithmetic folding.")
+		fmt.Println("fold: Performing arithmetic folding.")
 		return handleArithmetic(root, node, index)
 	case "IDENTIFIER":
-		fmt.Printf("  Resolving identifier: %s\n", node.Value)
+		fmt.Printf("fold: Resolving identifier: %s\n", node.Value)
 		resolvedNode := search(root, index, node.Value)
+		fmt.Println("fold: resolveNode.value: ", resolvedNode.Value)
 		return fold(root, resolvedNode, index)
 	case "FUNCTION_CALL":
-		fmt.Printf("  Resolving function call: %s\n", node.Value)
+		fmt.Printf("fold: Resolving function call: %s\n", node.Value)
 		funcNode := searchForFunctions(root, index, node.Value)
 		params := node.Params
-		var foldedParams []*Node
-		for _, param := range params {
-			foldedParams = append(foldedParams, fold(root, param, index))
+		for _, param := range funcNode.Params {
+			fmt.Println(param.DType)
 		}
-		fmt.Println("params " + params[0].Value)
+
+		if len(funcNode.Params) != len(params) {
+			fmt.Println("Optimizer: more parameters than accepted!")
+			os.Exit(3)
+		}
+
+		var foldedParams []*Node
+		for paramIndex, param := range params {
+			paramNode := Node{
+				DType: "OP",
+				Type:  "ASSIGN",
+				Value: "=",
+				Right: fold(root, param, index),
+				Left:  params[paramIndex],
+			}
+			paramNode.Left.Value = funcNode.Params[paramIndex].Value
+			foldedParams = append(foldedParams, &paramNode)
+			fmt.Println(len(foldedParams))
+		}
 		return foldFunction(funcNode, foldedParams, index)
 	case "ASSIGN":
-		fmt.Printf("  Resolving assign call: %s\n", node.Left.Value)
+		fmt.Printf("fold: assign: Resolving assign call: %s\n", node.Left.Value)
 		return fold(root, node.Right, index)
 	case "NUMBER":
-		fmt.Printf("  Resolving number call: %s\n", node.Value)
+		fmt.Printf("fold: number: Resolving number call: %s\n", node.Value)
 		return node
+	case "RETURN":
+		fmt.Printf("fold: return: Resolving return call: %s\n", node.Value)
+		return fold(root, node, index)
 	default:
 		fmt.Println("  No folding applied for unhandled node type.")
 		return node
@@ -88,34 +108,33 @@ func fold(root *Node, node *Node, index int) *Node {
 }
 
 func handleArithmetic(root *Node, node *Node, index int) *Node {
-	fmt.Printf("  Handling arithmetic for node %s with operation %s\n", node.Value, node.Right.Type)
-	leftNode := node.Right.Left
-	rightNode := node.Right.Right
+	fmt.Printf("handleArithmetic: Handling arithmetic for node %s with operation %s\n", node.Value, node.Right.Type)
+	leftNode := node.Left
+	rightNode := node.Right
 
 	// Ensure left and right nodes are not nil
 	if leftNode == nil || rightNode == nil {
-		fmt.Println("  Arithmetic operation missing operands.")
+		fmt.Println("handleArithmetic: Arithmetic operation missing operands.")
 		return node
 	}
 
 	// Resolve identifiers to their values, if necessary
 	if leftNode.Type == "IDENTIFIER" {
-		resolvedLeft := search(root, index, leftNode.Value)
-		fmt.Println(leftNode.Value)
+		resolvedLeft := fold(root, search(root, index, leftNode.Value), index)
+		fmt.Println("leftNode.Type = IDENTIFIER. Value: ", leftNode.Value)
 		if resolvedLeft != nil && resolvedLeft.Type == "NUMBER" {
 			fmt.Printf("  Resolved left identifier %s to %s\n", leftNode.Value, resolvedLeft.Value)
 			leftNode = resolvedLeft
 		}
 	}
 	if rightNode.Type == "IDENTIFIER" {
-		resolvedRight := search(root, index, rightNode.Value)
-		fmt.Println(rightNode.Value)
+		resolvedRight := fold(root, search(root, index, rightNode.Value), index)
+		fmt.Println("rightNode.Type = IDENTIFIER. Value: ", resolvedRight.Value)
 		if resolvedRight != nil && resolvedRight.Type == "NUMBER" {
 			fmt.Printf("  Resolved right identifier %s to %s\n", rightNode.Value, resolvedRight.Value)
 			rightNode = resolvedRight
 		}
 	}
-
 	// Resolve identifiers to their values, if necessary
 	if leftNode.Type == "ADD" || leftNode.Type == "SUB" || leftNode.Type == "MULT" || leftNode.Type == "DIV" {
 		leftNode = fold(root, leftNode, index)
@@ -129,88 +148,94 @@ func handleArithmetic(root *Node, node *Node, index int) *Node {
 		leftVal, _ := strconv.Atoi(leftNode.Value)
 		rightVal, _ := strconv.Atoi(rightNode.Value)
 
-		switch node.Right.Type {
+		fmt.Println("handleArithmetic: :node.Type: ", node.Type)
+		switch node.Type {
 		case "ADD":
-			node.Right.Value = strconv.Itoa(leftVal + rightVal)
-			fmt.Printf("  Folded ADD result: %s\n", node.Right.Value)
+			node.Value = strconv.Itoa(leftVal + rightVal)
+			node.Type = leftNode.Type
+			node.DType = leftNode.DType
+			node.Left = nil
+			node.Right = nil
+			fmt.Printf("  Folded ADD result: %s\n", node.Value)
 		case "SUB":
 			node.Right.Value = strconv.Itoa(leftVal - rightVal)
-			fmt.Printf("  Folded SUB result: %s\n", node.Right.Value)
+			node.Type = leftNode.Type
+			node.DType = leftNode.DType
+			node.Left = nil
+			node.Right = nil
+			fmt.Printf("  Folded SUB result: %s\n", node.Value)
 		case "MULT":
 			node.Right.Value = strconv.Itoa(leftVal * rightVal)
-			fmt.Printf("  Folded MULT result: %s\n", node.Right.Value)
+			node.Type = leftNode.Type
+			node.DType = leftNode.DType
+			node.Left = nil
+			node.Right = nil
+			fmt.Printf("  Folded MULT result: %s\n", node.Value)
 		case "DIV":
 			if rightVal == 0 {
 				fmt.Println("  Error: Division by zero!")
 				os.Exit(3)
 			}
 			node.Right.Value = strconv.Itoa(leftVal / rightVal)
-			fmt.Printf("  Folded DIV result: %s\n", node.Right.Value)
+			node.Type = leftNode.Type
+			node.DType = leftNode.DType
+			node.Left = nil
+			node.Right = nil
+			fmt.Printf("  Folded DIV result: %s\n", node.Value)
+		default:
+			fmt.Println("nothing")
 		}
-
-		// Update the node to represent a single number after folding
-		node.Right.Type = "NUMBER"
-		node.Right.DType = "INT"
-		node.Right.Left = nil
-		node.Right.Right = nil
-
-		return node
-
 	} else {
 		fmt.Println("  Operands are not both numbers; cannot fold.")
 	}
+
 	return node
 }
 
 func search(root *Node, searchBehind int, value string) *Node {
-	fmt.Println(searchBehind)
-	fmt.Println(len(root.Body))
-	fmt.Printf("  Searching for identifier %s in AST.\n", value)
+	fmt.Println("search:", root.Value)
+	fmt.Printf("search: Searching for identifier %s in AST.\n", value)
 	for i := searchBehind - 1; i >= 0; i-- {
-		fmt.Println(root.Body[i].Value)
+		fmt.Println("search: index: ", i)
+		fmt.Println("search: len: ", len(root.Body))
 		if root.Body[i].Type == "ASSIGN" {
 			if root.Body[i].Left.Value == value {
-				fmt.Printf("  Identifier %s found in AST.\n", value)
+				fmt.Printf("search: Identifier %s found in AST.\n", value)
 				return root.Body[i].Right
 			}
 		}
 	}
-	fmt.Printf("  Identifier %s not found in AST.\n", value)
+	fmt.Printf("search: Identifier %s not found in AST.\n", value)
 	return nil
 }
 
 func searchForFunctions(root *Node, searchBehind int, value string) *Node {
-	fmt.Printf("  Searching for function %s in AST.\n", value)
 	for i := searchBehind - 1; i >= 0; i-- {
 		if root.Body[i].Value == value && root.Body[i].Type == "FUNCTION_DECL" {
-			fmt.Printf("  Function %s found in AST.\n", value)
-			return root.Body[i]
+			funcNode := root.Body[i]
+			return funcNode // Return just the function body
 		}
 	}
-	fmt.Printf("  Function %s not found in AST.\n", value)
 	return nil
 }
 
-func foldFunction(node *Node, params []*Node, index int) *Node {
-	if node == nil {
-		fmt.Println("  foldFunction: Received a nil node.")
-		return nil
-	}
-
-	for _, param := range params {
-		node.Body = prependNode(node.Body, fold(node, param, index))
-	}
-
-	fmt.Printf("  Folding function %s\n", node.Value)
+func foldFunction(funcNode *Node, params []*Node, index int) *Node {
 	foldedFunction := &Node{}
-	for _, statement := range node.Body {
-		result := fold(node, statement, index)
+	for _, param := range params {
+		fmt.Println("param value", param.Left.Value)
+		funcNode.Body = prependNode(funcNode.Body, param)
+	}
+	for _, bodyStatement := range funcNode.Body {
+		fmt.Println("foldFunction: ", bodyStatement.Left.Value)
+	}
+	fmt.Println("foldFunction: len:", len(funcNode.Body))
+	for funcIndex, statement := range funcNode.Body {
+		result := fold(funcNode, statement, funcIndex) // Pass `nil` if root isn't needed
 		if result != nil {
-			fmt.Printf("  Statement folded: %s\n", result.Value)
 			foldedFunction.Body = append(foldedFunction.Body, result)
 		}
 	}
-	return foldedFunction
+	return foldedFunction.Body[len(foldedFunction.Body)-1]
 }
 
 func prependNode(body []*Node, node *Node) []*Node {

@@ -3,8 +3,9 @@ func sum(int a, int b) int {
     return c
 }
 int a = 5
-int b = 5
-int c = sum(a, b)
+int x = 5
+int c = sum(a, x)
+int e = 5 + 5
 func addTwo(int a) int {
     int c = a + 2
     return c

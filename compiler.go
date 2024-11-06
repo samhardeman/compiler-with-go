@@ -192,17 +192,6 @@ func parse(tokens []string, root *Node) *Node {
 
 			newNode := parseReturn(tokens[i:endLineIndex], line, root)
 
-			isValid := symbolMan(root, newNode)
-
-			if isValid {
-				root.Returns = append(root.Returns, newNode)
-			}
-
-			if !isValid {
-				fmt.Println("Previously undeclared variable assignment: " + tokens[i] + " on line " + strconv.Itoa(line))
-				os.Exit(3)
-			}
-
 			for _, declarations := range root.Declared {
 				if declarations.Value == newNode.Value {
 					newNode.DType = declarations.DType
@@ -213,6 +202,7 @@ func parse(tokens []string, root *Node) *Node {
 			checkFunctionReturnType(root, newNode)
 
 			root.Returns = append(root.Returns, newNode)
+			root.Body = append(root.Body, newNode)
 
 			i = endLineIndex
 		case "\n":
@@ -258,6 +248,7 @@ func symbolMan(root *Node, newNode *Node) bool {
 		for i := 0; i < len(root.Params); i++ {
 			if root.Params[i].Value == newNode.Value {
 				declared = true
+
 				break
 			}
 		}
@@ -436,12 +427,16 @@ func parseDecl(tokens []string, lineNumber int) *Node {
 
 // Parse return declarations
 func parseReturn(tokens []string, lineNumber int, root *Node) *Node {
+
+	returnNode := parseGeneric(tokens[1:], lineNumber, root)
+
 	newNode := Node{
 		Type:  "RETURN",
-		Value: tokens[1],
+		Value: "return",
 	}
 
-	newNode.DType = returnType(root, &newNode)
+	newNode.Body = append(newNode.Body, returnNode)
+	newNode.DType = returnNode.DType
 
 	return &newNode
 }
@@ -484,6 +479,9 @@ func parseFunc(tokens []string, lineNumber int) *Node {
 			newNode.Params = append(newNode.Params, parseDecl(params[i:i+2], lineNumber))
 		}
 	}
+
+	fmt.Println("freaky")
+	fmt.Println(len(newNode.Params))
 
 	if isIdentifier(tokens[closeParenIndex+1]) {
 		newNode.DType = strings.ToUpper(tokens[closeParenIndex+1])
