@@ -439,7 +439,7 @@ func symbolNode(name string, decltype string, dtype string) *Node {
 func parseDecl(tokens []string, lineNumber int) *Node {
 	newNode := Node{
 		Type:  "DECLARATION",
-		Value: tokens[len(tokens)-1],
+		Value: tokens[1],
 	}
 
 	if strings.HasPrefix(tokens[0], "int") || strings.HasPrefix(tokens[0], "string") || strings.HasPrefix(tokens[0], "char") {
