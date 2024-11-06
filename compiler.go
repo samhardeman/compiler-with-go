@@ -107,6 +107,36 @@ func parse(tokens []string, root *Node) *Node {
 	for i := 0; i < len(tokens); i += 0 {
 
 		token := tokens[i]
+		// Handle array declarations like "arr [10]int"
+		if isIdentifier(token) && i+1 < len(tokens) && tokens[i+1] == "[" {
+			// Find the closing bracket index
+			closingBracketIndex := slices.Index(tokens[i:], "]") + i
+			if closingBracketIndex == -1 {
+				fmt.Println("Expected ']' in array declaration on line " + strconv.Itoa(line))
+				os.Exit(3)
+			}
+
+			// Check if the token after ']' is a type
+			if closingBracketIndex+1 < len(tokens) && isType(tokens[closingBracketIndex+1]) {
+				// It's an array declaration
+				line++
+				endLineIndex := findEndLine(tokens[i:]) + i
+				declLine := tokens[i:endLineIndex]
+				declNode := parseArrayDecl(declLine, line)
+
+				isValid := symbolMan(root, declNode)
+
+				if !isValid {
+					fmt.Println(declNode.Value + " has already been declared!")
+					os.Exit(3)
+				}
+
+				root.Declared = append(root.Declared, symbolNode(declNode.Value, declNode.Type, declNode.DType))
+
+				i = endLineIndex + 1
+				continue
+			}
+		}
 
 		switch token {
 		case "write":
@@ -264,15 +294,9 @@ func symbolMan(root *Node, newNode *Node) bool {
 	var isValid bool
 
 	switch newNode.Type {
-	case "DECLARATION":
-		for i := 0; i < len(root.Declared); i++ {
-			if root.Declared[i].Value == newNode.Value {
-				declared = true
-				break
-			}
-		}
-		for i := 0; i < len(root.Params); i++ {
-			if root.Params[i].Value == newNode.Value {
+	case "DECLARATION", "ARRAY_DECL":
+		for _, decl := range root.Declared {
+			if decl.Value == newNode.Value {
 				declared = true
 				break
 			}
@@ -283,6 +307,28 @@ func symbolMan(root *Node, newNode *Node) bool {
 			isValid = true
 		}
 
+	case "ASSIGN":
+		// Handle assignments to variables and array elements
+		var variableName string
+		if newNode.Left.Type == "IDENTIFIER" {
+			variableName = newNode.Left.Value
+		} else if newNode.Left.Type == "ARRAY_ACCESS" {
+			variableName = newNode.Left.Left.Value
+		} else {
+			variableName = newNode.Left.Value
+		}
+		declared = false
+		for _, decl := range root.Declared {
+			if decl.Value == variableName {
+				declared = true
+				break
+			}
+		}
+		if !declared {
+			isValid = false
+		} else {
+			isValid = true
+		}
 	case "FUNCTION_DECL":
 		for i := 0; i < len(root.Declared); i++ {
 			if root.Declared[i].Value == newNode.Value {
@@ -295,30 +341,6 @@ func symbolMan(root *Node, newNode *Node) bool {
 				declared = true
 				break
 			}
-		}
-		if declared {
-			isValid = false
-		} else {
-			isValid = true
-		}
-
-	case "ARRAY_DECL":
-		for i := 0; i < len(root.Declared); i++ {
-			if root.Declared[i].Value == newNode.Value {
-				declared = true
-				break
-			}
-		}
-		for i := 0; i < len(root.Params); i++ {
-			if root.Params[i].Value == newNode.Value {
-				declared = true
-				break
-			}
-		}
-		if declared {
-			isValid = false
-		} else {
-			isValid = true
 		}
 		if declared {
 			isValid = false
@@ -345,26 +367,6 @@ func symbolMan(root *Node, newNode *Node) bool {
 			isValid = true
 		}
 
-	case "ASSIGN":
-		for i := 0; i < len(root.Declared); i++ {
-			if root.Declared[i].Value == newNode.Left.Value {
-				declared = true
-				break
-			}
-		}
-
-		for i := 0; i < len(root.Params); i++ {
-			if root.Params[i].Value == newNode.Left.Value {
-				declared = true
-				break
-			}
-		}
-
-		if !declared {
-			isValid = false
-		} else {
-			isValid = true
-		}
 	case "IDENTIFIER":
 		for i := 0; i < len(root.Declared); i++ {
 			if root.Declared[i].Value == newNode.Value {
@@ -644,16 +646,39 @@ func parseFunctionCall(tokens []string, lineNumber int, root *Node) Node {
 }
 
 func parseArrayDecl(tokens []string, lineNumber int) *Node {
-	newNode := Node{
-		Type:  "ARRAY_DECL",
-		DType: tokens[0] + tokens[1] + tokens[2],
-		Value: tokens[3],
-	}
-
-	if !isIdentifier(tokens[3]) {
-		fmt.Println("Expected variable name declaration got " + tokens[3] + " on line " + strconv.Itoa(lineNumber))
+	// Expected tokens: identifier "[" size "]" type
+	if len(tokens) < 5 {
+		fmt.Println("Invalid array declaration on line " + strconv.Itoa(lineNumber))
 		os.Exit(3)
 	}
+
+	variableName := tokens[0]
+	if !isIdentifier(variableName) {
+		fmt.Println("Expected variable name, got " + variableName + " on line " + strconv.Itoa(lineNumber))
+		os.Exit(3)
+	}
+
+	if tokens[1] != "[" || tokens[3] != "]" {
+		fmt.Println("Expected '[' and ']' in array declaration on line " + strconv.Itoa(lineNumber))
+		os.Exit(3)
+	}
+
+	size := tokens[2]
+	baseType := strings.ToUpper(tokens[4])
+
+	newNode := Node{
+		Type:  "ARRAY_DECL",
+		DType: "[]" + baseType, // e.g., []INT
+		Value: variableName,
+	}
+
+	// Optionally store size as a child node
+	sizeNode := Node{
+		Type:  "NUMBER",
+		DType: "INT",
+		Value: size,
+	}
+	newNode.Left = &sizeNode
 
 	return &newNode
 }
@@ -789,8 +814,11 @@ func bisect(expression []string, character string, direction string) []string {
 }
 
 func operatorTypeComparison(node *Node) {
-	if node.Left.DType != node.Right.DType {
-		fmt.Println("Type mismatch between " + node.Left.Value + " (" + node.Left.DType + ") " + "and " + node.Right.Value + " (" + node.Right.DType + ") " + " Error: line " + strconv.Itoa(line))
+	leftType := node.Left.DType
+	rightType := node.Right.DType
+
+	if leftType != rightType {
+		fmt.Println("Type mismatch between " + node.Left.Value + " (" + leftType + ") " + "and " + node.Right.Value + " (" + rightType + ") " + " Error: line " + strconv.Itoa(line))
 		os.Exit(3)
 	}
 }
@@ -885,15 +913,46 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 	} else if slices.Contains(tokens, "{") && slices.Contains(tokens, "}") {
 		newNode = parseArray(tokens, line, root)
 	} else if slices.Contains(tokens, "[") && slices.Contains(tokens, "]") {
-		var index string
-		for _, token := range tokens {
-			index = index + token
+		// Handle array access
+		identifier := tokens[0]
+		if !isIdentifier(identifier) {
+			fmt.Println("Invalid array identifier " + identifier + " on line " + strconv.Itoa(lineNumber))
+			os.Exit(3)
 		}
+		// Extract index tokens
+		indexStart := slices.Index(tokens, "[")
+		indexEnd := slices.Index(tokens, "]")
+		indexTokens := tokens[indexStart+1 : indexEnd]
+		indexNode := parseGeneric(indexTokens, lineNumber, root)
 		newNode = Node{
-			Type:  "ARRAY_INDEX",
-			DType: "INT",
-			Value: index,
+			Type:  "ARRAY_ACCESS",
+			DType: "", // We will set the DType later
+			Value: "",
+			Left: &Node{
+				Type:  "IDENTIFIER",
+				DType: "", // Set DType later
+				Value: identifier,
+			},
+			Index: indexNode,
 		}
+
+		// Set the DType of the identifier
+		newNode.Left.DType = returnType(root, newNode.Left)
+		if newNode.Left.DType == "" {
+			fmt.Println("Previously undeclared variable: " + identifier + " on line " + strconv.Itoa(lineNumber))
+			os.Exit(3)
+		}
+
+		// Set the DType of the array access node
+		// If arr is of type []INT, then element type is INT
+		if strings.HasPrefix(newNode.Left.DType, "[]") {
+			newNode.DType = strings.TrimPrefix(newNode.Left.DType, "[]")
+		} else {
+			fmt.Println("Variable " + identifier + " is not an array on line " + strconv.Itoa(lineNumber))
+			os.Exit(3)
+		}
+		return &newNode
+
 	} else if slices.Contains(numbers, tokens[0]) {
 		newNode = Node{
 			Type:  "NUMBER",
@@ -1077,4 +1136,8 @@ func parseArrayElements(tokens []string, lineNumber int, root *Node) []*Node {
 	}
 
 	return elements
+}
+func isType(token string) bool {
+	types := []string{"int", "string", "char"}
+	return slices.Contains(types, token)
 }

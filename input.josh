@@ -1,8 +1,7 @@
 int a = 2
 int b = 5
 int c = a + b + 7
-func add(int d, int e){
-    int f = d + e
-    write(f)
-}
-add(a, b)
+arr [10]int
+arr[0] = 1
+arr[1] = 2
+arr[2] = 3
