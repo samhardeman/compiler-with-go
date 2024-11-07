@@ -40,6 +40,7 @@ func main() {
 	traverseAST(newRoot.Body)
 	optimizedAST := optimizer(newRoot)
 	printAST(&optimizedAST)
+	optimize_tac(&optimizedAST, "output.tac")
 }
 
 func getFlags() string {
@@ -494,6 +495,24 @@ func parseFunc(tokens []string, lineNumber int) *Node {
 
 }
 
+func parseArrayIndex(tokens []string, lineNumber int, root *Node) Node {
+	arrayNode := Node{}
+
+	arrayNode.Type = "ARRAY_INDEX"
+
+	indexStart := slices.Index(tokens, "[")
+
+	arrayNode.Value = strings.Join(tokens[:indexStart], "")
+
+	indexTokens := tokens[indexStart+1 : len(tokens)-1]
+
+	arrayNode.Body = append(arrayNode.Body, parseGeneric(indexTokens, lineNumber, root))
+
+	arrayNode.DType = arrayNode.Body[0].DType
+
+	return arrayNode
+}
+
 func parseArray(tokens []string, lineNumber int, root *Node) Node {
 
 	newNode := Node{
@@ -854,15 +873,7 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 	} else if slices.Contains(tokens, "{") && slices.Contains(tokens, "}") {
 		newNode = parseArray(tokens, line, root)
 	} else if slices.Contains(tokens, "[") && slices.Contains(tokens, "]") {
-		var index string
-		for _, token := range tokens {
-			index = index + token
-		}
-		newNode = Node{
-			Type:  "ARRAY_INDEX",
-			DType: "INT",
-			Value: index,
-		}
+		newNode = parseArrayIndex(tokens, lineNumber, root)
 	} else if slices.Contains(numbers, tokens[0]) {
 		newNode = Node{
 			Type:  "NUMBER",

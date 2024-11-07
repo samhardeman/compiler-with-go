@@ -5,11 +5,12 @@ func sum(int a, int b) int {
 int a = 5
 int x = 5
 int c = sum(a, x)
-int e = 5 + 5
+[]int e = {1, 2, 3}
 func addTwo(int a) int {
     int c = a + 2
     return c
 }
+int f = e[0]
 int d = addTwo(c)
 write(c)
 write(d)
