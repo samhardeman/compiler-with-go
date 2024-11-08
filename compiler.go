@@ -22,6 +22,7 @@ type Node struct {
 	Body     []*Node
 	Left     *Node
 	Right    *Node
+	Parent   *Node // Add this field
 }
 
 type Symbol struct {
@@ -31,12 +32,14 @@ type Symbol struct {
 
 var line int
 
+var globalRoot *Node
+
 func main() {
 	line++
-	root := Node{}
+	globalRoot = &Node{}
 	var inputFile string = getFlags()
 	code := readLines(inputFile)
-	newRoot := parse(code, &root)
+	newRoot := parse(code, globalRoot)
 	traverseAST(newRoot.Body)
 	optimizedAST := optimizer(newRoot)
 	printAST(&optimizedAST)
@@ -87,9 +90,10 @@ func readLines(inputFile string) []string {
 // Parse (big slay)
 func parse(tokens []string, root *Node) *Node {
 	body := []*Node{}
+	i := 0
 
 	// iterate through code
-	for i := 0; i < len(tokens); i += 0 {
+	for i < len(tokens) {
 
 		token := tokens[i]
 
@@ -206,6 +210,13 @@ func parse(tokens []string, root *Node) *Node {
 			root.Body = append(root.Body, newNode)
 
 			i = endLineIndex
+
+		case "if":
+			ifNode, newIndex := parseIf(tokens[i:], line, root)
+			body = append(body, ifNode)
+			i += newIndex
+			line++
+
 		case "\n":
 			i++
 		case ";":
@@ -342,31 +353,27 @@ func symbolMan(root *Node, newNode *Node) bool {
 			isValid = true
 		}
 	case "IDENTIFIER":
-		for i := 0; i < len(root.Declared); i++ {
-			if root.Declared[i].Value == newNode.Value {
-				declared = true
-				break
-			}
-		}
+		declared = isDeclaredInScopeOrParents(root, newNode.Value)
+		isValid = declared
 
-		for i := 0; i < len(root.Params); i++ {
-			if root.Params[i].Value == newNode.Value {
-				declared = true
-				break
-			}
-		}
-
-		if !declared {
-			isValid = false
-		} else {
-			isValid = true
-		}
+	case "IF_STATEMENT", "ELSE_STATEMENT":
+		// No symbol table entries to check for control statements
+		isValid = true
 
 	default:
 		isValid = true
 	}
 
 	return isValid
+}
+func isDeclaredInScopeOrParents(scope *Node, identifier string) bool {
+	if isDeclaredInScope(scope, identifier) {
+		return true
+	}
+	if scope.Parent != nil {
+		return isDeclaredInScopeOrParents(scope.Parent, identifier)
+	}
+	return false
 }
 
 func checkFunctionReturnType(root *Node, returnNode *Node) {
@@ -379,6 +386,19 @@ func checkFunctionReturnType(root *Node, returnNode *Node) {
 		os.Exit(3)
 	}
 
+}
+func isDeclaredInScope(scope *Node, identifier string) bool {
+	for _, decl := range scope.Declared {
+		if decl.Value == identifier {
+			return true
+		}
+	}
+	for _, param := range scope.Params {
+		if param.Value == identifier {
+			return true
+		}
+	}
+	return false
 }
 
 func returnType(root *Node, searchedNode *Node) string {
@@ -657,20 +677,12 @@ func isIdentifier(word string) bool {
 
 // SplitStringInPlace splits mixed strings (like "add(int" or "b)") in the array in place
 func splitStringInPlace(arr *[]string) {
-	// Define a regex pattern to match sequences of letters, digits, or special characters, including arithmetic operators and equal signs
-	pattern := regexp.MustCompile(`[a-zA-Z0-9]+|[(){}[\];,+\-*/%=<>!]`)
-
-	// Create a new slice to store the modified array
+	pattern := regexp.MustCompile(`[a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|[(){}[\];,+\-*/%=<>!]|.`)
 	var result []string
-
 	for _, str := range *arr {
-		// Find all matches based on the regex pattern
 		matches := pattern.FindAllString(str, -1)
-		// Append the split matches to the result array
 		result = append(result, matches...)
 	}
-
-	// Replace the original array content with the new split elements
 	*arr = result
 }
 
@@ -789,9 +801,6 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 
 	var newNode Node
 
-	numbers := strings.Split("1234567890", "")
-	letters := strings.Split("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", "")
-
 	if slices.Contains(tokens, "=") {
 		newNode = Node{
 			Type:  "ASSIGN",
@@ -869,40 +878,216 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 		newNode.DType = newNode.Left.DType
 
 	} else if slices.Contains(tokens, "(") && slices.Contains(tokens, ")") {
-		newNode = parseFunctionCall(tokens, line, root)
+		newNode = parseFunctionCall(tokens, lineNumber, root)
 	} else if slices.Contains(tokens, "{") && slices.Contains(tokens, "}") {
-		newNode = parseArray(tokens, line, root)
+		newNode = parseArray(tokens, lineNumber, root)
 	} else if slices.Contains(tokens, "[") && slices.Contains(tokens, "]") {
 		newNode = parseArrayIndex(tokens, lineNumber, root)
-	} else if slices.Contains(numbers, tokens[0]) {
+	} else if isNumber(tokens[0]) {
 		newNode = Node{
 			Type:  "NUMBER",
 			DType: "INT",
 			Value: tokens[0],
 		}
-	} else if slices.Contains(letters, tokens[0]) {
-
+	} else if isIdentifier(tokens[0]) {
 		newNode = Node{
 			Type:  "IDENTIFIER",
 			Value: tokens[0],
 		}
 
 		returnType := returnType(root, &newNode)
-
 		newNode.DType = returnType
 
 		isValid := symbolMan(root, &newNode)
-
 		if !isValid {
 			fmt.Println("Previously undeclared variable assignment: " + tokens[0] + " on line " + strconv.Itoa(line))
 			os.Exit(3)
 		}
-
 	} else {
 		fmt.Println("Unrecognized character \"" + tokens[0] + "\" on line " + strconv.Itoa(line))
 		os.Exit(3)
-
 	}
 
 	return &newNode
+}
+func isNumber(token string) bool {
+	matched, _ := regexp.MatchString(`^\d+$`, token)
+	return matched
+}
+
+func parseIf(tokens []string, lineNumber int, root *Node) (*Node, int) {
+	ifNode := &Node{
+		Type:     "IF_STATEMENT",
+		Declared: []*Node{},
+		Body:     []*Node{},
+		Parent:   root,
+	}
+	consumedTokens := 0 // Counter for tokens consumed
+
+	// Expect '(' after 'if'
+	if tokens[1] != "(" {
+		fmt.Println("Expected '(' after 'if' on line " + strconv.Itoa(lineNumber))
+		os.Exit(3)
+	}
+	consumedTokens += 2 // 'if' and '('
+
+	// Find index of ')'
+	closeParenIndex := slices.Index(tokens[1:], ")") + 1
+	if closeParenIndex == 0 {
+		fmt.Println("Expected ')' to close 'if' condition on line " + strconv.Itoa(lineNumber))
+		os.Exit(3)
+	}
+	consumedTokens += closeParenIndex - 1 // Tokens up to ')'
+
+	// Parse condition
+	conditionTokens := tokens[2:closeParenIndex]
+	ifNode.Left = parseGeneric(conditionTokens, lineNumber, root)
+
+	// Expect '{' after condition
+	if tokens[closeParenIndex+1] != "{" {
+		fmt.Println("Expected '{' after 'if' condition on line " + strconv.Itoa(lineNumber))
+		os.Exit(3)
+	}
+	consumedTokens += 1 // '{'
+
+	// Find matching '}'
+	closeBraceIndex := findMatchingBrace(tokens[closeParenIndex+1:]) + closeParenIndex + 1
+	if closeBraceIndex == closeParenIndex {
+		fmt.Println("Mismatched braces in if statement starting on line " + strconv.Itoa(lineNumber))
+		os.Exit(3)
+	}
+	consumedTokens += closeBraceIndex - (closeParenIndex + 1) // Tokens within braces
+
+	// Parse 'if' body
+	ifBodyTokens := tokens[closeParenIndex+2 : closeBraceIndex]
+	ifNode.Body = parseStatements(ifBodyTokens, ifNode)
+
+	i := closeBraceIndex + 1
+	consumedTokens += 1 // '}'
+
+	// Check for 'else' keyword
+	if i < len(tokens) && tokens[i] == "else" {
+		consumedTokens += 1 // 'else'
+		// Expect '{' after 'else'
+		if i+1 >= len(tokens) || tokens[i+1] != "{" {
+			fmt.Println("Expected '{' after 'else' on line " + strconv.Itoa(lineNumber))
+			os.Exit(3)
+		}
+		consumedTokens += 1 // '{'
+		// Find matching '}'
+		elseCloseBraceIndex := findMatchingBrace(tokens[i+1:]) + i + 1
+		if elseCloseBraceIndex == i {
+			fmt.Println("Mismatched braces in else statement starting on line " + strconv.Itoa(lineNumber))
+			os.Exit(3)
+		}
+		consumedTokens += elseCloseBraceIndex - (i + 1) + 1 // Tokens within 'else' braces
+
+		// Parse 'else' body
+		elseBodyTokens := tokens[i+2 : elseCloseBraceIndex]
+		elseNode := &Node{
+			Type:     "ELSE_STATEMENT",
+			Declared: []*Node{},
+			Body:     parseStatements(elseBodyTokens, ifNode),
+		}
+		ifNode.Right = elseNode
+		i = elseCloseBraceIndex + 1
+	}
+
+	return ifNode, consumedTokens
+}
+
+func parseStatements(tokens []string, root *Node) []*Node {
+	body := []*Node{}
+	i := 0
+
+	for i < len(tokens) {
+		token := tokens[i]
+
+		switch token {
+		case "write":
+			endLineIndex := findEndLine(tokens[i:]) + i
+			writeNode := parseWrite(tokens[i:endLineIndex], line, root)
+			body = append(body, &writeNode)
+			i = endLineIndex + 1
+			line++
+
+		case "int", "string", "char":
+			endLineIndex := findEndLine(tokens[i:]) + i
+			declLine := tokens[i:endLineIndex]
+			declNode := parseDecl(declLine, line)
+
+			isValid := symbolMan(root, declNode)
+			if !isValid {
+				fmt.Println(declNode.Value + " has already been declared!")
+				os.Exit(3)
+			}
+
+			root.Declared = append(root.Declared, symbolNode(declNode.Value, declNode.Type, declNode.DType))
+
+			if len(declLine) > 2 && declLine[2] == "=" {
+				newNode := parseGeneric(declLine[1:], line, root)
+				body = append(body, newNode)
+			}
+
+			i = endLineIndex + 1
+
+		case "if":
+			ifNode, newIndex := parseIf(tokens[i:], line, root)
+			body = append(body, ifNode)
+			i += newIndex
+			line++
+
+		case "return":
+			endLineIndex := findEndLine(tokens[i:]) + i
+
+			if len(tokens[i:endLineIndex]) > 2 {
+				fmt.Println("Only one return argument allowed. Error: line " + strconv.Itoa(line))
+				os.Exit(3)
+			}
+
+			returnNode := parseReturn(tokens[i:endLineIndex], line, root)
+
+			checkFunctionReturnType(root, returnNode)
+
+			body = append(body, returnNode)
+
+			i = endLineIndex + 1 // Increment 'i' to move past the 'return' statement
+
+		case "\n", ";":
+			i++
+
+		default:
+			endLineIndex := findEndLine(tokens[i:]) + i
+			newNode := parseGeneric(tokens[i:endLineIndex], line, root)
+
+			isValid := symbolMan(root, newNode)
+			if isValid {
+				body = append(body, newNode)
+			} else {
+				fmt.Println("Previously undeclared variable assignment: " + tokens[i] + " on line " + strconv.Itoa(line))
+				os.Exit(3)
+			}
+			i = endLineIndex + 1
+		}
+	}
+
+	return body
+}
+
+func findMatchingBrace(tokens []string) int {
+	braceCount := 0
+	for i, token := range tokens {
+		if token == "{" {
+			braceCount++
+		} else if token == "}" {
+			braceCount--
+			if braceCount == 0 {
+				return i
+			}
+		}
+	}
+	fmt.Println("Mismatched braces")
+	fmt.Println("Tokens:", tokens)
+	os.Exit(3)
+	return -1
 }
