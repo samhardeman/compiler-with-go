@@ -9,9 +9,10 @@ import (
 
 func optimizer(root *Node) Node {
 	optimizedAST := Node{
-		Type:  "root",
-		DType: "",
-		Value: "",
+		Type:  root.Type,
+		DType: root.DType,
+		Value: root.Value,
+		Body:  []*Node{},
 	}
 
 	for index, statement := range root.Body {
@@ -33,11 +34,52 @@ func optimizer(root *Node) Node {
 					optimizedAST.Body = append(optimizedAST.Body, funcNode)
 				}
 			}
+<<<<<<< HEAD
+=======
+		case "IF_STATEMENT":
+			optimizedIfNode := optimizeIfStatement(root, statement, index)
+			optimizedAST.Body = append(optimizedAST.Body, optimizedIfNode)
+		default:
+			fmt.Printf("  No optimization for statement of type %s\n", statement.Type)
+>>>>>>> 3912d4f (If statements work 【=◈︿◈=】??????)
 		}
-		index++
 	}
 
 	return optimizedAST
+}
+
+func optimizeIfStatement(root *Node, ifNode *Node, index int) *Node {
+	// Optimize the condition
+	ifNode.Left = fold(root, ifNode.Left, index)
+
+	// Optimize the 'if' body
+	if len(ifNode.Body) > 0 {
+		optimizedBody := []*Node{}
+		for idx, stmt := range ifNode.Body {
+			optimizedStmt := fold(root, stmt, idx)
+			if optimizedStmt != nil {
+				optimizedBody = append(optimizedBody, optimizedStmt)
+			}
+		}
+		ifNode.Body = optimizedBody
+	}
+
+	// Optimize the 'else' body, if present
+	if ifNode.Right != nil && ifNode.Right.Type == "ELSE_STATEMENT" {
+		elseNode := ifNode.Right
+		if len(elseNode.Body) > 0 {
+			optimizedElseBody := []*Node{}
+			for idx, stmt := range elseNode.Body {
+				optimizedStmt := fold(root, stmt, idx)
+				if optimizedStmt != nil {
+					optimizedElseBody = append(optimizedElseBody, optimizedStmt)
+				}
+			}
+			elseNode.Body = optimizedElseBody
+		}
+	}
+
+	return ifNode
 }
 
 func fold(root *Node, node *Node, index int) *Node {
@@ -50,6 +92,7 @@ func fold(root *Node, node *Node, index int) *Node {
 		return handleArithmetic(root, node, index)
 	case "IDENTIFIER":
 		resolvedNode := search(root, index, node.Value)
+<<<<<<< HEAD
 		return fold(root, resolvedNode, index)
 	case "FUNCTION_CALL":
 		funcNode := searchForFunctions(root, index, node.Value)
@@ -58,31 +101,31 @@ func fold(root *Node, node *Node, index int) *Node {
 		if len(funcNode.Params) != len(params) {
 			fmt.Println("Expected", len(funcNode.Params), "params, received", len(params), "on function call", node.Value)
 			os.Exit(3)
+=======
+		if resolvedNode != nil {
+			return fold(root, resolvedNode, index)
+>>>>>>> 3912d4f (If statements work 【=◈︿◈=】??????)
 		}
-
-		var foldedParams []*Node
-		for paramIndex, param := range params {
-			paramNode := Node{
-				DType: "OP",
-				Type:  "ASSIGN",
-				Value: "=",
-				Right: fold(root, param, index),
-				Left:  params[paramIndex],
-			}
-			paramNode.Left.Value = funcNode.Params[paramIndex].Value
-			foldedParams = append(foldedParams, &paramNode)
-		}
-		return foldFunction(funcNode, foldedParams, index)
+		return node // Return the identifier if not found
 	case "ASSIGN":
-		return fold(root, node.Right, index)
-	case "NUMBER":
+		node.Right = fold(root, node.Right, index)
 		return node
-	case "ARRAY_INDEX":
-		arrayIndexNode := fold(root, node.Body[0], index)
-		arrayNode := search(root, index, node.Value)
+	case "IF_STATEMENT":
+		// Optimize the condition
+		if node.Left != nil {
+			node.Left = fold(root, node.Left, index)
+		}
 
-		arrayIndex, _ := strconv.Atoi(arrayIndexNode.Value)
+		// Optimize the 'if' body
+		if node.Body != nil && len(node.Body) > 0 {
+			for i, stmt := range node.Body {
+				if stmt != nil {
+					node.Body[i] = fold(node, stmt, i)
+				}
+			}
+		}
 
+<<<<<<< HEAD
 		if arrayIndex >= len(arrayNode.Body) {
 			fmt.Println("Index out of range [", arrayIndex, "] for", node.Value, "with length", len(arrayNode.Body))
 			os.Exit(3)
@@ -92,6 +135,23 @@ func fold(root *Node, node *Node, index int) *Node {
 	case "RETURN":
 		return fold(root, node, index)
 	default:
+=======
+		// Optimize the 'else' body, if present
+		if node.Right != nil && node.Right.Type == "ELSE_STATEMENT" {
+			elseNode := node.Right
+			if elseNode.Body != nil && len(elseNode.Body) > 0 {
+				for i, stmt := range elseNode.Body {
+					if stmt != nil {
+						elseNode.Body[i] = fold(elseNode, stmt, i)
+					}
+				}
+			}
+		}
+
+		return node
+	default:
+		// Return node as is if no folding is applied
+>>>>>>> 3912d4f (If statements work 【=◈︿◈=】??????)
 		return node
 	}
 }
