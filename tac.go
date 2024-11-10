@@ -28,22 +28,20 @@ func generateOptimizedTAC(node *Node, writer *bufio.Writer) {
 
 	switch node.Type {
 	case "ASSIGN":
-		// Existing assignment handling
+		// Generate TAC for assignment
 		left := node.Left.Value
 		right := node.Right.Value
 		line := fmt.Sprintf("%s = %s\n", left, right)
 		writer.WriteString(line)
-
 	case "FUNCTION_DECL":
-		// Existing function declaration handling
+		// Handle function declaration
 		writer.WriteString(fmt.Sprintf("func %s:\n", node.Value))
 		for _, stmt := range node.Body {
 			generateOptimizedTAC(stmt, writer)
 		}
 		writer.WriteString("end func\n")
-
 	case "FUNCTION_CALL":
-		// Existing function call handling
+		// Handle function call with arguments
 		args := []string{}
 		for _, param := range node.Params {
 			arg := generateOptimizedExpressionTAC(param, writer)
@@ -51,65 +49,19 @@ func generateOptimizedTAC(node *Node, writer *bufio.Writer) {
 		}
 		line := fmt.Sprintf("call %s %s\n", node.Value, strings.Join(args, ", "))
 		writer.WriteString(line)
-
 	case "RETURN":
-		// Existing return handling
+		// Handle return statement
 		expr := generateOptimizedExpressionTAC(node.Right, writer)
 		writer.WriteString(fmt.Sprintf("return %s\n", expr))
-
-	case "IF_STATEMENT":
-		// Handle if statement
-		condition := generateOptimizedExpressionTAC(node.Left, writer)
-		labelTrue := getLabel()
-		labelEnd := getLabel()
-
-		// Write condition evaluation and conditional jump
-		line := fmt.Sprintf("if %s goto %s\n", condition, labelTrue)
-		writer.WriteString(line)
-		// If condition is false, jump to else or end
-		if node.Right != nil {
-			// Else exists
-			writer.WriteString(fmt.Sprintf("goto %s\n", labelEnd))
-		} else {
-			// No else, jump to end
-			writer.WriteString(fmt.Sprintf("goto %s\n", labelEnd))
-		}
-
-		// Label for true condition
-		writer.WriteString(fmt.Sprintf("%s:\n", labelTrue))
-		// Generate TAC for the 'if' body
-		for _, stmt := range node.Body {
-			generateOptimizedTAC(stmt, writer)
-		}
-		// After 'if' body, jump to end
-		writer.WriteString(fmt.Sprintf("goto %s\n", labelEnd))
-
-		if node.Right != nil {
-			// Label for else
-			writer.WriteString(fmt.Sprintf("%s:\n", labelEnd))
-			elseNode := node.Right
-			for _, stmt := range elseNode.Body {
-				generateOptimizedTAC(stmt, writer)
-			}
-			// End label
-			writer.WriteString(fmt.Sprintf("%s:\n", labelEnd))
-		} else {
-			// End label
-			writer.WriteString(fmt.Sprintf("%s:\n", labelEnd))
-		}
-
-	case "ELSE_STATEMENT":
-		// Handled within IF_STATEMENT
-		// No action needed here
 	default:
 		// Handle other node types if necessary
 	}
 
 	// Recursively generate TAC for child nodes
-	if node.Left != nil && node.Type != "IF_STATEMENT" { // Prevent duplicate handling for IF_STATEMENT
+	if node.Left != nil {
 		generateOptimizedTAC(node.Left, writer)
 	}
-	if node.Right != nil && node.Type != "IF_STATEMENT" { // Prevent duplicate handling for IF_STATEMENT
+	if node.Right != nil {
 		generateOptimizedTAC(node.Right, writer)
 	}
 	for _, child := range node.Body {
@@ -157,11 +109,4 @@ func getOperatorSymbol(nodeType string) string {
 	default:
 		return ""
 	}
-}
-
-var labelCounter int
-
-func getLabel() string {
-	labelCounter++
-	return fmt.Sprintf("L%d", labelCounter)
 }
