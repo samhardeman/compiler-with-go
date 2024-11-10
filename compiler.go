@@ -93,8 +93,8 @@ func parse(tokens []string, root *Node) *Node {
 
 		token := tokens[i]
 
-		switch token {
-		case "write":
+		switch {
+		case token == "write":
 			endLineIndex := findEndLine(tokens[i:]) + i
 
 			writeNode := parseWrite(tokens[i:endLineIndex], line, root)
@@ -102,9 +102,9 @@ func parse(tokens []string, root *Node) *Node {
 			body = append(body, &writeNode)
 
 			i = endLineIndex
-			line++
-		case "func":
-			line++
+
+		case token == "func":
+
 			endFunctionDeclIndex := slices.Index(tokens[i:], "{") + i + 1
 			closingBraceIndex := slices.Index(tokens[i:], "}") + i + 1
 			funcNode := parseFunc(tokens[i:endFunctionDeclIndex], line)
@@ -120,17 +120,13 @@ func parse(tokens []string, root *Node) *Node {
 
 			root.Declared = append(root.Declared, symbolNode(funcNode.Value, funcNode.Type, funcNode.DType))
 
-			if tokens[closingBraceIndex] == "\n" {
-				line++
-			}
-
 			body = append(body, funcNode)
 
 			tokensTraversed := closingBraceIndex - i
 
 			i += tokensTraversed
-		case "int":
-			line++
+		case token == "int" || token == "string" || token == "char" || token == "float" || token == "bool":
+
 			endLineIndex := findEndLine(tokens[i:]) + i
 			declLine := tokens[i:endLineIndex]
 			declNode := parseDecl(declLine, line)
@@ -152,7 +148,7 @@ func parse(tokens []string, root *Node) *Node {
 			}
 
 			i = endLineIndex
-		case "[":
+		case token == "[":
 			var arrayDecl *Node
 			endLineIndex := findEndLine(tokens[i:]) + i
 
@@ -182,8 +178,7 @@ func parse(tokens []string, root *Node) *Node {
 
 			i = endLineIndex
 
-		case "return":
-			line++
+		case token == "return":
 			endLineIndex := findEndLine(tokens[i:]) + i
 
 			if len(tokens[i:endLineIndex]) > 2 {
@@ -206,9 +201,10 @@ func parse(tokens []string, root *Node) *Node {
 			root.Body = append(root.Body, newNode)
 
 			i = endLineIndex
-		case "\n":
+		case token == "\n":
+			line++
 			i++
-		case ";":
+		case token == ";":
 			i++
 		default:
 			endLineIndex := findEndLine(tokens[i:]) + i
@@ -481,9 +477,6 @@ func parseFunc(tokens []string, lineNumber int) *Node {
 		}
 	}
 
-	fmt.Println("freaky")
-	fmt.Println(len(newNode.Params))
-
 	if isIdentifier(tokens[closeParenIndex+1]) {
 		newNode.DType = strings.ToUpper(tokens[closeParenIndex+1])
 	} else if tokens[closeParenIndex+1] != "{" {
@@ -508,7 +501,7 @@ func parseArrayIndex(tokens []string, lineNumber int, root *Node) Node {
 
 	arrayNode.Body = append(arrayNode.Body, parseGeneric(indexTokens, lineNumber, root))
 
-	arrayNode.DType = arrayNode.Body[0].DType
+	arrayNode.DType = returnType(root, &arrayNode)[2:]
 
 	return arrayNode
 }
@@ -637,7 +630,7 @@ func parseFunctionCall(tokens []string, lineNumber int, root *Node) Node {
 func parseArrayDecl(tokens []string, lineNumber int) *Node {
 	newNode := Node{
 		Type:  "ARRAY_DECL",
-		DType: tokens[0] + tokens[1] + tokens[2],
+		DType: strings.ToUpper(strings.Join(tokens[0:3], "")),
 		Value: tokens[3],
 	}
 
@@ -657,9 +650,11 @@ func isIdentifier(word string) bool {
 
 // SplitStringInPlace splits mixed strings (like "add(int" or "b)") in the array in place
 func splitStringInPlace(arr *[]string) {
-	// Define a regex pattern to match sequences of letters, digits, or special characters, including arithmetic operators and equal signs
-	pattern := regexp.MustCompile(`[a-zA-Z0-9]+|[(){}[\];,+\-*/%=<>!]`)
-
+	// Updated regex pattern:
+	// 1. Matches quoted strings: "..." or '...'
+	// 2. Matches decimal numbers as a single token (e.g., 123.45)
+	// 3. Matches identifiers and other symbols, operators, etc.
+	pattern := regexp.MustCompile(`"[^"]*"|'[^']*'|\b\d+\.\d+\b|[a-zA-Z0-9]+|[(){}[\];,+\-*/%=<>!]`)
 	// Create a new slice to store the modified array
 	var result []string
 
@@ -789,120 +784,213 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 
 	var newNode Node
 
-	numbers := strings.Split("1234567890", "")
-	letters := strings.Split("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", "")
+	dataType := detectType(strings.Join(tokens, ""))
 
-	if slices.Contains(tokens, "=") {
-		newNode = Node{
-			Type:  "ASSIGN",
-			DType: "OP",
-			Value: "=",
-			Left:  parseGeneric(bisect(tokens, "=", "left"), lineNumber, root),
-			Right: parseGeneric(bisect(tokens, "=", "right"), lineNumber, root),
+	if dataType != "unknown" && dataType != "" {
+		switch dataType {
+		case "INT":
+			newNode = Node{
+				Type:  dataType,
+				DType: dataType,
+				Value: strings.Join(tokens, ""),
+			}
+		case "STRING":
+			newNode = Node{
+				Type:  dataType,
+				DType: dataType,
+				Value: strings.Join(tokens, ""),
+			}
+		case "CHAR":
+			newNode = Node{
+				Type:  dataType,
+				DType: dataType,
+				Value: strings.Join(tokens, ""),
+			}
+		case "FLOAT":
+			newNode = Node{
+				Type:  dataType,
+				DType: dataType,
+				Value: strings.Join(tokens, ""),
+			}
+		case "BOOL":
+			newNode = Node{
+				Type:  dataType,
+				DType: dataType,
+				Value: strings.Join(tokens, ""),
+			}
 		}
+	} else {
+		if slices.Contains(tokens, "=") {
+			newNode = Node{
+				Type:  "ASSIGN",
+				DType: "OP",
+				Value: "=",
+				Left:  parseGeneric(bisect(tokens, "=", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, "=", "right"), lineNumber, root),
+			}
 
-		if newNode.Right.Value == "{}" {
-			expectedElementType := strings.ToUpper(strings.Split(newNode.Left.DType, "]")[1])
+			if newNode.Right.Value == "{}" {
+				expectedElementType := strings.ToUpper(strings.Split(newNode.Left.DType, "]")[1])
 
-			if newNode.Left.DType != "[]any" {
-				for _, element := range newNode.Right.Body {
-					if element.DType != expectedElementType {
-						fmt.Println("Array element " + element.Value + " does not match array type " + expectedElementType)
-						os.Exit(3)
+				if newNode.Left.DType != "[]any" {
+					for _, element := range newNode.Right.Body {
+						if element.DType != expectedElementType {
+							fmt.Println("Array element " + element.Value + " does not match array type " + expectedElementType)
+							os.Exit(3)
+						}
 					}
 				}
+			} else if newNode.Right.DType != "OP" {
+				operatorTypeComparison(&newNode)
 			}
-		} else if newNode.Right.DType != "OP" {
+
+		} else if slices.Contains(tokens, "*") {
+			newNode = Node{
+				Type:  "MULT",
+				DType: "OP",
+				Value: "*",
+				Left:  parseGeneric(bisect(tokens, "*", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, "*", "right"), lineNumber, root),
+			}
+
 			operatorTypeComparison(&newNode)
-		}
 
-	} else if slices.Contains(tokens, "*") {
-		newNode = Node{
-			Type:  "MULT",
-			DType: "OP",
-			Value: "*",
-			Left:  parseGeneric(bisect(tokens, "*", "left"), lineNumber, root),
-			Right: parseGeneric(bisect(tokens, "*", "right"), lineNumber, root),
-		}
+			newNode.DType = newNode.Left.DType
 
-		operatorTypeComparison(&newNode)
+		} else if slices.Contains(tokens, "/") {
+			newNode = Node{
+				Type:  "DIV",
+				DType: "OP",
+				Value: "/",
+				Left:  parseGeneric(bisect(tokens, "/", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, "/", "right"), lineNumber, root),
+			}
 
-		newNode.DType = newNode.Left.DType
+			operatorTypeComparison(&newNode)
 
-	} else if slices.Contains(tokens, "/") {
-		newNode = Node{
-			Type:  "DIV",
-			DType: "OP",
-			Value: "/",
-			Left:  parseGeneric(bisect(tokens, "/", "left"), lineNumber, root),
-			Right: parseGeneric(bisect(tokens, "/", "right"), lineNumber, root),
-		}
+			newNode.DType = newNode.Left.DType
 
-		operatorTypeComparison(&newNode)
+		} else if slices.Contains(tokens, "+") {
+			newNode = Node{
+				Type:  "ADD",
+				DType: "OP",
+				Value: "+",
+				Left:  parseGeneric(bisect(tokens, "+", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, "+", "right"), lineNumber, root),
+			}
 
-		newNode.DType = newNode.Left.DType
+			operatorTypeComparison(&newNode)
 
-	} else if slices.Contains(tokens, "+") {
-		newNode = Node{
-			Type:  "ADD",
-			DType: "OP",
-			Value: "+",
-			Left:  parseGeneric(bisect(tokens, "+", "left"), lineNumber, root),
-			Right: parseGeneric(bisect(tokens, "+", "right"), lineNumber, root),
-		}
+			newNode.DType = newNode.Left.DType
 
-		operatorTypeComparison(&newNode)
+		} else if slices.Contains(tokens, "-") {
+			newNode = Node{
+				Type:  "SUB",
+				DType: "OP",
+				Value: "-",
+				Left:  parseGeneric(bisect(tokens, "-", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, "-", "right"), lineNumber, root),
+			}
 
-		newNode.DType = newNode.Left.DType
+			operatorTypeComparison(&newNode)
 
-	} else if slices.Contains(tokens, "-") {
-		newNode = Node{
-			Type:  "SUB",
-			DType: "OP",
-			Value: "-",
-			Left:  parseGeneric(bisect(tokens, "-", "left"), lineNumber, root),
-			Right: parseGeneric(bisect(tokens, "-", "right"), lineNumber, root),
-		}
+			newNode.DType = newNode.Left.DType
 
-		operatorTypeComparison(&newNode)
+		} else if slices.Contains(tokens, "(") && slices.Contains(tokens, ")") {
+			newNode = parseFunctionCall(tokens, line, root)
+		} else if slices.Contains(tokens, "{") && slices.Contains(tokens, "}") {
+			newNode = parseArray(tokens, line, root)
+		} else if slices.Contains(tokens, "[") && slices.Contains(tokens, "]") {
+			newNode = parseArrayIndex(tokens, lineNumber, root)
+		} else if isIdentifier(tokens[0]) {
 
-		newNode.DType = newNode.Left.DType
+			newNode = Node{
+				Type:  "IDENTIFIER",
+				Value: tokens[0],
+			}
 
-	} else if slices.Contains(tokens, "(") && slices.Contains(tokens, ")") {
-		newNode = parseFunctionCall(tokens, line, root)
-	} else if slices.Contains(tokens, "{") && slices.Contains(tokens, "}") {
-		newNode = parseArray(tokens, line, root)
-	} else if slices.Contains(tokens, "[") && slices.Contains(tokens, "]") {
-		newNode = parseArrayIndex(tokens, lineNumber, root)
-	} else if slices.Contains(numbers, tokens[0]) {
-		newNode = Node{
-			Type:  "NUMBER",
-			DType: "INT",
-			Value: tokens[0],
-		}
-	} else if slices.Contains(letters, tokens[0]) {
+			returnType := returnType(root, &newNode)
 
-		newNode = Node{
-			Type:  "IDENTIFIER",
-			Value: tokens[0],
-		}
+			newNode.DType = returnType
 
-		returnType := returnType(root, &newNode)
+			isValid := symbolMan(root, &newNode)
 
-		newNode.DType = returnType
+			if !isValid {
+				fmt.Println("Previously undeclared variable assignment: "+tokens[0]+" on line", line)
+				os.Exit(3)
+			}
 
-		isValid := symbolMan(root, &newNode)
-
-		if !isValid {
-			fmt.Println("Previously undeclared variable assignment: " + tokens[0] + " on line " + strconv.Itoa(line))
+		} else {
+			fmt.Println("Unrecognized character \"" + tokens[0] + "\" on line " + strconv.Itoa(line))
 			os.Exit(3)
+
 		}
-
-	} else {
-		fmt.Println("Unrecognized character \"" + tokens[0] + "\" on line " + strconv.Itoa(line))
-		os.Exit(3)
-
 	}
 
 	return &newNode
+}
+
+// detectType analyzes a slice of string tokens and returns a map of the token and its detected type
+func detectType(tokens string) string {
+	var types string
+
+	switch {
+	// Check for booleans
+	case tokens == "True" || tokens == "False":
+		types = "BOOL"
+
+	// Check for floats
+	case isFloat(tokens):
+		types = "FLOAT"
+
+	// Check for integers
+	case isInt(tokens):
+		types = "INT"
+
+	// Check for strings
+	case isString(tokens):
+		types = "STRING"
+
+	// Check for chars
+	case isChar(tokens):
+		types = "CHAR"
+
+	// If none matched, mark as "unknown"
+	default:
+		types = "unknown"
+	}
+
+	return types
+}
+
+// Helper function to check if token is an integer
+func isInt(token string) bool {
+	_, err := strconv.Atoi(token)
+	return err == nil
+}
+
+// Helper function to check if token is a float
+func isFloat(token string) bool {
+	_, err := strconv.ParseFloat(token, 64)
+	return err == nil && containsDecimal(token)
+}
+
+// Helper function to check if token is a string (starts and ends with double quotes)
+func isString(token string) bool {
+	return len(token) >= 2 && token[0] == '"' && token[len(token)-1] == '"'
+}
+
+// Helper function to check if token is a character (single character surrounded by single quotes)
+func isChar(token string) bool {
+	return len(token) == 3 && token[0] == '\'' && token[2] == '\''
+}
+
+// Helper function to check if the float contains a decimal point
+func containsDecimal(token string) bool {
+	for _, char := range token {
+		if char == '.' {
+			return true
+		}
+	}
+	return false
 }

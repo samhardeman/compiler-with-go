@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 )
 
@@ -107,13 +108,13 @@ func handleArithmetic(root *Node, node *Node, index int) *Node {
 	// Resolve identifiers to their values, if necessary
 	if leftNode.Type == "IDENTIFIER" {
 		resolvedLeft := fold(root, search(root, index, leftNode.Value), index)
-		if resolvedLeft != nil && resolvedLeft.Type == "NUMBER" {
+		if resolvedLeft != nil {
 			leftNode = resolvedLeft
 		}
 	}
 	if rightNode.Type == "IDENTIFIER" {
 		resolvedRight := fold(root, search(root, index, rightNode.Value), index)
-		if resolvedRight != nil && resolvedRight.Type == "NUMBER" {
+		if resolvedRight != nil {
 			rightNode = resolvedRight
 		}
 	}
@@ -125,36 +126,75 @@ func handleArithmetic(root *Node, node *Node, index int) *Node {
 		rightNode = fold(root, rightNode, index)
 	}
 
+	if (leftNode.DType == "INT" || leftNode.DType == "FLOAT") && (rightNode.DType == "INT" || rightNode.DType == "FLOAT") {
+		var leftVal, rightVal float64
+		var err error
+
+		// Convert left value
+		if leftNode.DType == "INT" {
+			intVal, _ := strconv.Atoi(leftNode.Value)
+			leftVal = float64(intVal)
+		} else {
+			leftVal, err = strconv.ParseFloat(leftNode.Value, 64)
+			if err != nil {
+				fmt.Println("Error parsing left float:", err)
+				os.Exit(3)
+			}
+		}
+
+		// Convert right value
+		if rightNode.DType == "INT" {
+			intVal, _ := strconv.Atoi(rightNode.Value)
+			rightVal = float64(intVal)
+		} else {
+			rightVal, err = strconv.ParseFloat(rightNode.Value, 64)
+			if err != nil {
+				fmt.Println("Error parsing right float:", err)
+				os.Exit(3)
+			}
+		}
+
+		// Perform operation based on node type
+		switch node.Type {
+		case "ADD":
+			node.Value = strconv.FormatFloat(leftVal+rightVal, 'f', -1, 64)
+		case "SUB":
+			node.Value = strconv.FormatFloat(leftVal-rightVal, 'f', -1, 64)
+		case "MULT":
+			node.Value = strconv.FormatFloat(leftVal*rightVal, 'f', -1, 64)
+		case "DIV":
+			if rightVal == 0 {
+				fmt.Println("Error: Division by zero!")
+				os.Exit(3)
+			}
+			node.Value = strconv.FormatFloat(leftVal/rightVal, 'f', -1, 64)
+		default:
+			fmt.Println("Unknown operation")
+			return node
+		}
+
+		// Set the result type and cleanup nodes
+		node.Type = leftNode.Type
+		node.DType = "FLOAT" // Result is float if any operand was float
+		node.Left = nil
+		node.Right = nil
+
+	} else {
+		fmt.Println("Operands are not both numbers; cannot fold.")
+	}
+
 	// After resolution, check if both nodes are numbers
-	if leftNode.Type == "NUMBER" && rightNode.Type == "NUMBER" {
-		leftVal, _ := strconv.Atoi(leftNode.Value)
-		rightVal, _ := strconv.Atoi(rightNode.Value)
+	if leftNode.DType == "STRING" && rightNode.DType == "STRING" {
+		// Regular expression to match non-escaped quotes
+		re := regexp.MustCompile(`(^|[^\\])"`)
+
+		// Remove non-escaped quotes from each string
+		cleanLeft := re.ReplaceAllString(leftNode.Value, `$1`)
+		cleanRight := re.ReplaceAllString(rightNode.Value, `$1`)
 
 		switch node.Type {
 		case "ADD":
-			node.Value = strconv.Itoa(leftVal + rightVal)
-			node.Type = leftNode.Type
-			node.DType = leftNode.DType
-			node.Left = nil
-			node.Right = nil
-		case "SUB":
-			node.Right.Value = strconv.Itoa(leftVal - rightVal)
-			node.Type = leftNode.Type
-			node.DType = leftNode.DType
-			node.Left = nil
-			node.Right = nil
-		case "MULT":
-			node.Right.Value = strconv.Itoa(leftVal * rightVal)
-			node.Type = leftNode.Type
-			node.DType = leftNode.DType
-			node.Left = nil
-			node.Right = nil
-		case "DIV":
-			if rightVal == 0 {
-				fmt.Println("  Error: Division by zero!")
-				os.Exit(3)
-			}
-			node.Right.Value = strconv.Itoa(leftVal / rightVal)
+			node.Value = fmt.Sprintf("\"%s %s\"", cleanLeft, cleanRight)
 			node.Type = leftNode.Type
 			node.DType = leftNode.DType
 			node.Left = nil
@@ -163,7 +203,7 @@ func handleArithmetic(root *Node, node *Node, index int) *Node {
 			fmt.Println("nothing")
 		}
 	} else {
-		fmt.Println("  Operands are not both numbers; cannot fold.")
+		fmt.Println("Unsupported string operation.")
 	}
 
 	return node
