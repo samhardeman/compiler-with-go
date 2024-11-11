@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -19,8 +20,13 @@ type TacInstruction struct {
 // Parses TAC input lines into TacInstruction structs
 func parseTAC(lines []string) []TacInstruction {
 	var instructions []TacInstruction
+
+	// Regular expression to split the line into tokens, ignoring spaces inside quotes
+	re := regexp.MustCompile(`"(.*?)"|\S+`) // Match anything inside quotes or non-space characters
+
 	for _, line := range lines {
-		tokens := strings.Fields(line)
+		// Find all matches using the regex
+		tokens := re.FindAllString(line, -1)
 
 		// Handle TAC format: var = value or call function arg
 		if len(tokens) == 3 && tokens[1] == "=" {
@@ -29,7 +35,7 @@ func parseTAC(lines []string) []TacInstruction {
 				arg1:   tokens[2],
 				result: tokens[0],
 			})
-		} else if len(tokens) == 4 && tokens[0] == "call" {
+		} else if tokens[0] == "call" {
 			instructions = append(instructions, TacInstruction{
 				op:   "call",
 				arg1: tokens[1],
@@ -42,95 +48,91 @@ func parseTAC(lines []string) []TacInstruction {
 
 // Determines the type of the argument for MIPS storage
 func determineType(value string) string {
+	// Check for strings
 	if strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") {
 		return "string"
 	} else if strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'") {
 		return "char"
-	} else if _, err := strconv.ParseFloat(value, 64); err == nil {
-		return "float"
 	} else if value == "True" || value == "False" {
 		return "bool"
-	} else if _, err := strconv.Atoi(value); err == nil {
-		return "int"
+	} else if _, err := strconv.ParseFloat(value, 64); err == nil {
+		// If the value is a valid float, it's a float type, unless it's an integer without a decimal
+		if strings.Contains(value, ".") {
+			return "float"
+		}
+		return "int" // If it's an integer, we'll consider it as int
 	}
 	return "unknown"
 }
 
-// Generates MIPS assembly code from TAC instructions
-func generateMIPS(tac []TacInstruction) string {
+// Generate MIPS code from parsed TAC instructions
+func generateMIPS(instructions []TacInstruction) string {
 	var mipsCode strings.Builder
 
-	// Declare a data section for variables
+	// Start .data section
 	mipsCode.WriteString(".data\n")
-	variableTypes := make(map[string]string)
 
-	// Process TAC instructions
-	for _, instr := range tac {
-		switch instr.op {
-		case "=":
-			// Detect type and create variable in MIPS data section
-			valueType := determineType(instr.arg1)
-			variableTypes[instr.result] = valueType
-
-			switch valueType {
-			case "string":
-				value := instr.arg1[1 : len(instr.arg1)-1] // Remove quotes
-				mipsCode.WriteString(fmt.Sprintf("%s: .asciiz \"%s\"\n", instr.result, value))
-
-			case "char":
-				charValue := instr.arg1[1 : len(instr.arg1)-1] // Remove single quotes
-				mipsCode.WriteString(fmt.Sprintf("%s: .byte '%s'\n", instr.result, charValue))
-
-			case "int":
-				mipsCode.WriteString(fmt.Sprintf("%s: .word %s\n", instr.result, instr.arg1))
-
-			case "float":
-				mipsCode.WriteString(fmt.Sprintf("%s: .float %s\n", instr.result, instr.arg1))
-
-			case "bool":
-				boolValue := "0"
-				if instr.arg1 == "True" {
-					boolValue = "1"
-				}
-				mipsCode.WriteString(fmt.Sprintf("%s: .word %s\n", instr.result, boolValue))
+	// Store variables in .data section
+	for _, instr := range instructions {
+		switch {
+		case instr.arg1[0] == '"' || instr.arg1[0] == '"':
+			// Handle string literals
+			mipsCode.WriteString(fmt.Sprintf("%s: .asciiz %s\n", instr.result, instr.arg1))
+		case instr.arg1[0] == '\'':
+			// Handle char literals (single quotes)
+			mipsCode.WriteString(fmt.Sprintf("%s: .byte %s\n", instr.result, instr.arg1))
+		case instr.arg1 == "True" || instr.arg1 == "False":
+			// Handle boolean values (1 for true, 0 for false)
+			boolVal := 0
+			if instr.arg1 == "True" {
+				boolVal = 1
 			}
-
-		case "call":
-			// Handle write calls based on type
-			mipsCode.WriteString("\n.text\n")
-
-			if instr.arg1 == "write" {
-				varType, exists := variableTypes[instr.arg2]
-				if !exists {
-					mipsCode.WriteString(fmt.Sprintf("# Error: Variable %s not defined\n", instr.arg2))
-					continue
-				}
-
-				switch varType {
-				case "string":
-					mipsCode.WriteString("li $v0, 4\n")                           // syscall for printing string
-					mipsCode.WriteString(fmt.Sprintf("la $a0, %s\n", instr.arg2)) // load address of string
-
-				case "char":
-					mipsCode.WriteString("li $v0, 11\n")                          // syscall for printing char
-					mipsCode.WriteString(fmt.Sprintf("lb $a0, %s\n", instr.arg2)) // load byte (char)
-
-				case "int":
-					mipsCode.WriteString("li $v0, 1\n")                           // syscall for printing integer
-					mipsCode.WriteString(fmt.Sprintf("lw $a0, %s\n", instr.arg2)) // load word (int)
-
-				case "float":
-					mipsCode.WriteString("li $v0, 2\n")                             // syscall for printing float
-					mipsCode.WriteString(fmt.Sprintf("l.s $f12, %s\n", instr.arg2)) // load float
-
-				case "bool":
-					mipsCode.WriteString("li $v0, 1\n")                           // syscall for printing integer
-					mipsCode.WriteString(fmt.Sprintf("lw $a0, %s\n", instr.arg2)) // load word (bool as int)
-				}
-				mipsCode.WriteString("syscall\n") // make syscall
+			mipsCode.WriteString(fmt.Sprintf("%s: .word %d\n", instr.result, boolVal))
+		case instr.arg1[0] >= '0' && instr.arg1[0] <= '9' || instr.arg1[0] == '-':
+			// Handle integer or float numbers
+			if strings.Contains(instr.arg1, ".") {
+				// Handle float numbers
+				mipsCode.WriteString(fmt.Sprintf("%s: .float %s\n", instr.result, instr.arg1))
+			} else {
+				// Handle integer numbers
+				mipsCode.WriteString(fmt.Sprintf("%s: .word %s\n", instr.result, instr.arg1))
 			}
 		}
 	}
+
+	// Start .text section
+	mipsCode.WriteString("\n.text\n")
+	mipsCode.WriteString("main:\n")
+
+	// Handle syscalls (call write)
+	for _, instr := range instructions {
+		if instr.op == "call" && instr.arg1 == "write" {
+			// Handle writing the correct variable
+			if instr.arg2[0] == '"' || instr.arg2[0] == '"' {
+				// Write a string
+				mipsCode.WriteString(fmt.Sprintf("li $v0, 4\nla $a0, %s\nsyscall\n", instr.arg2))
+			} else if instr.arg2[0] == '\'' {
+				// Write a character
+				mipsCode.WriteString(fmt.Sprintf("li $v0, 11\nlb $a0, %s\nsyscall\n", instr.arg2))
+			} else if instr.arg2 == "True" || instr.arg2 == "False" {
+				// Print boolean (int 1 or 0)
+				mipsCode.WriteString(fmt.Sprintf("li $v0, 1\nlw $a0, %s\nsyscall\n", instr.arg2))
+			} else if strings.Contains(instr.arg2, ".") {
+				// Print float
+				mipsCode.WriteString(fmt.Sprintf("li $v0, 2\nl.s $f12, %s\nsyscall\n", instr.arg2))
+			} else {
+				// Print integer
+				mipsCode.WriteString(fmt.Sprintf("li $v0, 1\nlw $a0, %s\nsyscall\n", instr.arg2))
+			}
+		}
+	}
+
+	// Add program termination
+	mipsCode.WriteString("\nli $v0, 10\nsyscall\n") // Exit program
+
+	// End of program
+	mipsCode.WriteString("\n# End of program\n")
+
 	return mipsCode.String()
 }
 

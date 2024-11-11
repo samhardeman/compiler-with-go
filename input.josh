@@ -1,15 +1,4 @@
-func concat(string a, string b) string{
-    string c = a + b
-    return c
-}
-string word = "hello"
-string word2 = "world"
-string combined = concat(word, word2)
 int a = 5
 int b = 6
 int c = a + b
-char example = 'a'
-float example2 = 1.3
-bool example3 = True
 write(c)
-write(combined)
