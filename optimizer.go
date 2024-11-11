@@ -198,11 +198,9 @@ func handleArithmetic(root *Node, node *Node, index int) *Node {
 			node.Left = nil
 			node.Right = nil
 		default:
-			fmt.Println("nothing")
+			fmt.Println("Unsupported string operation between", leftNode.Value, "and", rightNode.Value)
+			os.Exit(3)
 		}
-	} else {
-		fmt.Println("Unsupported string operation between", leftNode.Value, "and", rightNode.Value)
-		os.Exit(3)
 	}
 
 	return node

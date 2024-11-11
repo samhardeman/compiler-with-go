@@ -42,6 +42,8 @@ func main() {
 	optimizedAST := optimizer(newRoot)
 	fmt.Println("Finished Optimization! Outputting Tac...")
 	optimize_tac(&optimizedAST, "output.tac")
+	fmt.Println("Tac Complete! Compiling to MIPS...")
+	tac2Mips("output.tac")
 	fmt.Println("Finished! 【=◈ ︿◈ =】")
 }
 

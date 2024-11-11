@@ -1,0 +1,9 @@
+.data
+word: .asciiz "hello"
+word2: .asciiz "world"
+a: .float 5
+b: .float 6
+c: .float 11
+example: .byte 'a'
+example2: .float 1.3
+example3: .word 1
