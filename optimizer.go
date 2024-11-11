@@ -34,14 +34,11 @@ func optimizer(root *Node) Node {
 					optimizedAST.Body = append(optimizedAST.Body, funcNode)
 				}
 			}
-<<<<<<< HEAD
-=======
 		case "IF_STATEMENT":
 			optimizedIfNode := optimizeIfStatement(root, statement, index)
 			optimizedAST.Body = append(optimizedAST.Body, optimizedIfNode)
 		default:
 			fmt.Printf("  No optimization for statement of type %s\n", statement.Type)
->>>>>>> 3912d4f (If statements work 【=◈︿◈=】??????)
 		}
 	}
 
@@ -92,7 +89,6 @@ func fold(root *Node, node *Node, index int) *Node {
 		return handleArithmetic(root, node, index)
 	case "IDENTIFIER":
 		resolvedNode := search(root, index, node.Value)
-<<<<<<< HEAD
 		return fold(root, resolvedNode, index)
 	case "FUNCTION_CALL":
 		funcNode := searchForFunctions(root, index, node.Value)
@@ -101,10 +97,8 @@ func fold(root *Node, node *Node, index int) *Node {
 		if len(funcNode.Params) != len(params) {
 			fmt.Println("Expected", len(funcNode.Params), "params, received", len(params), "on function call", node.Value)
 			os.Exit(3)
-=======
 		if resolvedNode != nil {
 			return fold(root, resolvedNode, index)
->>>>>>> 3912d4f (If statements work 【=◈︿◈=】??????)
 		}
 		return node // Return the identifier if not found
 	case "ASSIGN":
