@@ -36,11 +36,13 @@ func main() {
 	root := Node{}
 	var inputFile string = getFlags()
 	code := readLines(inputFile)
+	fmt.Println("Parsing...")
 	newRoot := parse(code, &root)
-	traverseAST(newRoot.Body)
+	fmt.Println("Finished Parsing! Beginning Optimization...")
 	optimizedAST := optimizer(newRoot)
-	printAST(&optimizedAST)
+	fmt.Println("Finished Optimization! Outputting Tac...")
 	optimize_tac(&optimizedAST, "output.tac")
+	fmt.Println("Finished! 【=◈ ︿◈ =】")
 }
 
 func getFlags() string {
@@ -368,10 +370,10 @@ func symbolMan(root *Node, newNode *Node) bool {
 func checkFunctionReturnType(root *Node, returnNode *Node) {
 
 	if root.DType == "void" {
-		fmt.Println("Unexpected return in function " + root.Value + " which is void of returns!")
+		fmt.Println("Unexpected return in function "+root.Value+" which is void of returns! Line:", line)
 		os.Exit(3)
 	} else if returnNode.DType != root.DType {
-		fmt.Println("Returned variable " + returnNode.Value + " in " + root.Value + " does not match function return type!")
+		fmt.Println("Returned variable "+returnNode.Value+" in "+root.Value+" does not match function return type! Line:", line)
 		os.Exit(3)
 	}
 
@@ -593,7 +595,7 @@ func parseFunctionCall(tokens []string, lineNumber int, root *Node) Node {
 	}
 
 	if !functionDeclared {
-		fmt.Println("Unrecognized function \"" + newNode.Value + "\"")
+		fmt.Println("Unrecognized function \""+newNode.Value+"\" Line:", line)
 		os.Exit(3)
 	}
 
@@ -752,7 +754,7 @@ func bisect(expression []string, character string, direction string) []string {
 
 	// Check if character is not found
 	if index == -1 {
-		fmt.Println("Character not found in expression.")
+		fmt.Println("Character not found in expression. Line:", line)
 		os.Exit(3)
 	}
 
@@ -766,7 +768,7 @@ func bisect(expression []string, character string, direction string) []string {
 			tokens = append(tokens, expression[i])
 		}
 	} else {
-		fmt.Println("Did not recognize direction: " + direction)
+		fmt.Println("Did not recognize direction: "+direction+" Line:", line)
 		os.Exit(3)
 	}
 
@@ -896,11 +898,11 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 
 			newNode.DType = newNode.Left.DType
 
-		} else if slices.Contains(tokens, "(") && slices.Contains(tokens, ")") {
+		} else if slices.Contains(tokens, "(") {
 			newNode = parseFunctionCall(tokens, line, root)
-		} else if slices.Contains(tokens, "{") && slices.Contains(tokens, "}") {
+		} else if slices.Contains(tokens, "{") {
 			newNode = parseArray(tokens, line, root)
-		} else if slices.Contains(tokens, "[") && slices.Contains(tokens, "]") {
+		} else if slices.Contains(tokens, "[") {
 			newNode = parseArrayIndex(tokens, lineNumber, root)
 		} else if isIdentifier(tokens[0]) {
 

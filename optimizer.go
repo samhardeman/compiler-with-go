@@ -8,7 +8,6 @@ import (
 )
 
 func optimizer(root *Node) Node {
-	fmt.Println("Starting optimization...")
 	optimizedAST := Node{
 		Type:  "root",
 		DType: "",
@@ -34,13 +33,10 @@ func optimizer(root *Node) Node {
 					optimizedAST.Body = append(optimizedAST.Body, funcNode)
 				}
 			}
-		default:
-			fmt.Printf("  No optimization for statement of type %s\n", statement.Type)
 		}
 		index++
 	}
 
-	fmt.Println("Optimization complete.")
 	return optimizedAST
 }
 
@@ -60,7 +56,7 @@ func fold(root *Node, node *Node, index int) *Node {
 		params := node.Params
 
 		if len(funcNode.Params) != len(params) {
-			fmt.Println("Optimizer: more parameters than accepted!")
+			fmt.Println("Expected", len(funcNode.Params), "params, received", len(params), "on function call", node.Value)
 			os.Exit(3)
 		}
 
@@ -87,11 +83,15 @@ func fold(root *Node, node *Node, index int) *Node {
 
 		arrayIndex, _ := strconv.Atoi(arrayIndexNode.Value)
 
+		if arrayIndex >= len(arrayNode.Body) {
+			fmt.Println("Index out of range [", arrayIndex, "] for", node.Value, "with length", len(arrayNode.Body))
+			os.Exit(3)
+		}
+
 		return arrayNode.Body[arrayIndex]
 	case "RETURN":
 		return fold(root, node, index)
 	default:
-		fmt.Println("  No folding applied for unhandled node type.")
 		return node
 	}
 }
@@ -179,8 +179,6 @@ func handleArithmetic(root *Node, node *Node, index int) *Node {
 		node.Left = nil
 		node.Right = nil
 
-	} else {
-		fmt.Println("Operands are not both numbers; cannot fold.")
 	}
 
 	// After resolution, check if both nodes are numbers
@@ -203,7 +201,8 @@ func handleArithmetic(root *Node, node *Node, index int) *Node {
 			fmt.Println("nothing")
 		}
 	} else {
-		fmt.Println("Unsupported string operation.")
+		fmt.Println("Unsupported string operation between", leftNode.Value, "and", rightNode.Value)
+		os.Exit(3)
 	}
 
 	return node
