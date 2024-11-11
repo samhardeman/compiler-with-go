@@ -34,14 +34,11 @@ func optimizer(root *Node) Node {
 					optimizedAST.Body = append(optimizedAST.Body, funcNode)
 				}
 			}
-<<<<<<< HEAD
-=======
 		case "IF_STATEMENT":
 			optimizedIfNode := optimizeIfStatement(root, statement, index)
 			optimizedAST.Body = append(optimizedAST.Body, optimizedIfNode)
 		default:
 			fmt.Printf("  No optimization for statement of type %s\n", statement.Type)
->>>>>>> 3912d4f (If statements work 【=◈︿◈=】??????)
 		}
 	}
 
@@ -92,19 +89,8 @@ func fold(root *Node, node *Node, index int) *Node {
 		return handleArithmetic(root, node, index)
 	case "IDENTIFIER":
 		resolvedNode := search(root, index, node.Value)
-<<<<<<< HEAD
-		return fold(root, resolvedNode, index)
-	case "FUNCTION_CALL":
-		funcNode := searchForFunctions(root, index, node.Value)
-		params := node.Params
-
-		if len(funcNode.Params) != len(params) {
-			fmt.Println("Expected", len(funcNode.Params), "params, received", len(params), "on function call", node.Value)
-			os.Exit(3)
-=======
 		if resolvedNode != nil {
 			return fold(root, resolvedNode, index)
->>>>>>> 3912d4f (If statements work 【=◈︿◈=】??????)
 		}
 		return node // Return the identifier if not found
 	case "ASSIGN":
@@ -125,17 +111,6 @@ func fold(root *Node, node *Node, index int) *Node {
 			}
 		}
 
-<<<<<<< HEAD
-		if arrayIndex >= len(arrayNode.Body) {
-			fmt.Println("Index out of range [", arrayIndex, "] for", node.Value, "with length", len(arrayNode.Body))
-			os.Exit(3)
-		}
-
-		return arrayNode.Body[arrayIndex]
-	case "RETURN":
-		return fold(root, node, index)
-	default:
-=======
 		// Optimize the 'else' body, if present
 		if node.Right != nil && node.Right.Type == "ELSE_STATEMENT" {
 			elseNode := node.Right
@@ -151,7 +126,6 @@ func fold(root *Node, node *Node, index int) *Node {
 		return node
 	default:
 		// Return node as is if no folding is applied
->>>>>>> 3912d4f (If statements work 【=◈︿◈=】??????)
 		return node
 	}
 }
