@@ -75,7 +75,7 @@ func generateMIPS(instructions []TacInstruction) string {
 	// Store variables in .data section
 	for _, instr := range instructions {
 		switch {
-		case instr.arg1[0] == '"' || instr.arg1[0] == '"':
+		case instr.arg1[0] == '"':
 			// Handle string literals
 			mipsCode.WriteString(fmt.Sprintf("%s: .asciiz %s\n", instr.result, instr.arg1))
 		case instr.arg1[0] == '\'':
@@ -108,7 +108,7 @@ func generateMIPS(instructions []TacInstruction) string {
 	for _, instr := range instructions {
 		if instr.op == "call" && instr.arg1 == "write" {
 			// Handle writing the correct variable
-			if instr.arg2[0] == '"' || instr.arg2[0] == '"' {
+			if instr.arg2[0] == '"' {
 				// Write a string
 				mipsCode.WriteString(fmt.Sprintf("li $v0, 4\nla $a0, %s\nsyscall\n", instr.arg2))
 			} else if instr.arg2[0] == '\'' {

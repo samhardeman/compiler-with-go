@@ -2,6 +2,7 @@
 a: .word 5
 b: .word 6
 c: .word 11
+words: .asciiz "hello world"
 
 .text
 main:

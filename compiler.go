@@ -75,7 +75,8 @@ func readLines(inputFile string) []string {
 	// for each line, append the line to the code array
 	for scanner.Scan() {
 		// splits line into tokens
-		tokens := strings.Fields(scanner.Text())
+		re := regexp.MustCompile(`"(.*?)"|\S+`)
+		tokens := re.FindAllString(scanner.Text(), -1)
 		splitStringInPlace(&tokens)
 		tokens = append(tokens, "\n")
 		code = append(code, tokens...)
