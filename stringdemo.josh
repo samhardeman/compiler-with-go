@@ -1,0 +1,5 @@
+string word1 = "hello"
+string word2 = " "
+string word3 = "world"
+string coolness = word1 + word2 + word3
+write("coolness")
