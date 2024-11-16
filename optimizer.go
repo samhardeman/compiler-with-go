@@ -27,7 +27,11 @@ func optimizer(root *Node) Node {
 			}
 		case "FUNCTION_CALL":
 			if statement.Value == "write" {
-				optimizedAST.Body = append(optimizedAST.Body, statement)
+				writeNode := statement
+				for paramIndex, param := range writeNode.Params {
+					writeNode.Params[paramIndex] = fold(root, param, index)
+				}
+				optimizedAST.Body = append(optimizedAST.Body, writeNode)
 			} else {
 				funcNode := searchForFunctions(root, index, statement.Value)
 				params := statement.Params

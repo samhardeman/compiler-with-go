@@ -1,20 +1,26 @@
 .data
-opt_t1_STRING: .asciiz "hello"
+opt_t1_STRING: .asciiz "\nhello"
 opt_t2_STRING: .asciiz " world"
 opt_t3_CHAR: .byte 'a'
 opt_t4_INT: .word 39
 opt_t5_INT: .word 72
 opt_t6_FLOAT: .float 3.14
-opt_t7_STRING: .asciiz "hello world"
-opt_t8_INT: .word 78
+opt_t7_STRING: .asciiz "\nhello world"
+opt_t8_STRING: .asciiz "\nhello world yeah"
+opt_t9_INT: .word 78
+opt_t10_INT: .word 78
+opt_t11_STRING: .asciiz "\nhello world"
 
 .text
 main:
+li $v0, 4
+la $a0, opt_t8_STRING
+syscall
 li $v0, 1
-lw $a0, opt_t8_INT
+lw $a0, opt_t10_INT
 syscall
 li $v0, 4
-la $a0, opt_t7_STRING
+la $a0, opt_t11_STRING
 syscall
 
 li $v0, 10
