@@ -28,6 +28,8 @@ func parseTAC(lines []string) []TacInstruction {
 		// Find all matches using the regex
 		tokens := re.FindAllString(line, -1)
 
+		fmt.Println(tokens)
+
 		// Handle TAC format: var = value or call function arg
 		if len(tokens) == 3 && tokens[1] == "=" {
 			instructions = append(instructions, TacInstruction{
@@ -116,7 +118,7 @@ func generateMIPS(instructions []TacInstruction) string {
 				mipsCode.WriteString(fmt.Sprintf("li $v0, 11\nlb $a0, %s\nsyscall\n", instr.arg2))
 			} else if instr.arg2 == "True" || instr.arg2 == "False" {
 				// Print boolean (int 1 or 0)
-				mipsCode.WriteString(fmt.Sprintf("li $v0, 1\nlw $a0, %s\nsyscall\n", instr.arg2))
+				mipsCode.WriteString(fmt.Sprintf("li $v0, 1\nla $a0, %s\nsyscall\n", instr.arg2))
 			} else if strings.Contains(instr.arg2, ".") {
 				// Print float
 				mipsCode.WriteString(fmt.Sprintf("li $v0, 2\nl.s $f12, %s\nsyscall\n", instr.arg2))

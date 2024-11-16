@@ -85,7 +85,7 @@ func generateOptimizedExpressionTAC(node *Node, writer *bufio.Writer) string {
 		writer.WriteString(line)
 		return tempVar
 	default:
-		return ""
+		return node.Value
 	}
 }
 

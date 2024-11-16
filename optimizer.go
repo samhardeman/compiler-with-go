@@ -226,7 +226,7 @@ func handleArithmetic(root *Node, node *Node, index int) *Node {
 
 		switch node.Type {
 		case "ADD":
-			node.Value = fmt.Sprintf("\"%s %s\"", cleanLeft, cleanRight)
+			node.Value = fmt.Sprintf("\"%s%s\"", cleanLeft, cleanRight)
 			node.Type = leftNode.Type
 			node.DType = leftNode.DType
 			node.Left = nil
