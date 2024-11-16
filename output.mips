@@ -1,11 +1,11 @@
 .data
-opt_t1_STRING: .asciiz "\nhello"
+opt_t1_STRING: .asciiz "hello"
 opt_t2_STRING: .asciiz " world"
 opt_t3_CHAR: .byte 'a'
 opt_t4_INT: .word 39
 opt_t5_INT: .word 72
 opt_t6_FLOAT: .float 3.14
-opt_t7_STRING: .asciiz "\nhello world"
+opt_t7_STRING: .asciiz "hello world"
 opt_t8_INT: .word 78
 
 .text

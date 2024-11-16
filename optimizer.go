@@ -30,8 +30,28 @@ func optimizer(root *Node) Node {
 				optimizedAST.Body = append(optimizedAST.Body, statement)
 			} else {
 				funcNode := searchForFunctions(root, index, statement.Value)
+				params := statement.Params
+
+				if len(funcNode.Params) != len(params) {
+					fmt.Println("Optimizer: more parameters than accepted!")
+					os.Exit(3)
+				}
+
+				var foldedParams []*Node
+				for paramIndex, param := range params {
+					paramNode := Node{
+						DType: "OP",
+						Type:  "ASSIGN",
+						Value: "=",
+						Right: fold(root, param, index),
+						Left:  funcNode.Params[paramIndex],
+					}
+					foldedParams = append(foldedParams, &paramNode)
+				}
+
+				foldedFunction := foldFunction(funcNode, foldedParams, index)
 				if funcNode != nil {
-					optimizedAST.Body = append(optimizedAST.Body, funcNode)
+					optimizedAST.Body = append(optimizedAST.Body, foldedFunction)
 				}
 			}
 		case "IF_STATEMENT":
@@ -96,31 +116,39 @@ func fold(root *Node, node *Node, index int) *Node {
 		node.Right = fold(root, node.Right, index)
 		return node
 	case "FUNCTION_CALL":
-		funcNode := searchForFunctions(root, index, node.Value)
-		params := node.Params
-
-		if len(funcNode.Params) != len(params) {
-			fmt.Println("Optimizer: more parameters than accepted!")
-			os.Exit(3)
-		}
-
-		var foldedParams []*Node
-		for paramIndex, param := range params {
-			paramNode := Node{
-				DType: "OP",
-				Type:  "ASSIGN",
-				Value: "=",
-				Right: fold(root, param, index),
-				Left:  funcNode.Params[paramIndex],
+		if node.Value == "write" {
+			writeNode := node
+			for paramIndex, param := range writeNode.Params {
+				writeNode.Params[paramIndex] = fold(root, param, index)
 			}
-			foldedParams = append(foldedParams, &paramNode)
-		}
+			return writeNode
+		} else {
+			funcNode := searchForFunctions(root, index, node.Value)
+			params := node.Params
 
-		foldedFunction := foldFunction(funcNode, foldedParams, index)
-		if foldedFunction.Type == "ASSIGN" {
-			return foldedFunction.Right
+			if len(funcNode.Params) != len(params) {
+				fmt.Println("Optimizer: more parameters than accepted!")
+				os.Exit(3)
+			}
+
+			var foldedParams []*Node
+			for paramIndex, param := range params {
+				paramNode := Node{
+					DType: "OP",
+					Type:  "ASSIGN",
+					Value: "=",
+					Right: fold(root, param, index),
+					Left:  funcNode.Params[paramIndex],
+				}
+				foldedParams = append(foldedParams, &paramNode)
+			}
+
+			foldedFunction := foldFunction(funcNode, foldedParams, index)
+			if foldedFunction.Type == "ASSIGN" {
+				return foldedFunction.Right
+			}
+			return foldedFunction
 		}
-		return foldedFunction
 	case "ARRAY_INDEX":
 		arrayIndexNode := fold(root, node.Body[0], index)
 		arrayNode := search(root, index, node.Value)
