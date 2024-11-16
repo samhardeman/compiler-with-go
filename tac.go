@@ -7,6 +7,9 @@ import (
 	"strings"
 )
 
+// Symbol table to store values and their corresponding tempVars
+var symbolTable = make(map[string]string)
+
 // Function to generate optimized TAC and write to a file
 func optimize_tac(root *Node, filename string) {
 	file, err := os.Create(filename)
@@ -19,6 +22,12 @@ func optimize_tac(root *Node, filename string) {
 	writer := bufio.NewWriter(file)
 	generateOptimizedTAC(root, writer)
 	writer.Flush()
+
+	// Output the symbol table for debugging purposes
+	fmt.Println("Symbol Table:")
+	for value, tempVar := range symbolTable {
+		fmt.Printf("%s -> %s\n", value, tempVar)
+	}
 }
 
 func generateOptimizedTAC(node *Node, writer *bufio.Writer) {
@@ -29,10 +38,7 @@ func generateOptimizedTAC(node *Node, writer *bufio.Writer) {
 	switch node.Type {
 	case "ASSIGN":
 		// Generate TAC for assignment
-		left := node.Left.Value
-		right := node.Right.Value
-		line := fmt.Sprintf("%s = %s\n", left, right)
-		writer.WriteString(line)
+		handleValue(node.Right, writer)
 	case "FUNCTION_DECL":
 		// Handle function declaration
 		writer.WriteString(fmt.Sprintf("func %s:\n", node.Value))
@@ -44,14 +50,14 @@ func generateOptimizedTAC(node *Node, writer *bufio.Writer) {
 		// Handle function call with arguments
 		args := []string{}
 		for _, param := range node.Params {
-			arg := generateOptimizedExpressionTAC(param, writer)
+			arg := handleValue(param, writer)
 			args = append(args, arg)
 		}
 		line := fmt.Sprintf("call %s %s\n", node.Value, strings.Join(args, ", "))
 		writer.WriteString(line)
 	case "RETURN":
 		// Handle return statement
-		expr := generateOptimizedExpressionTAC(node.Right, writer)
+		expr := handleValue(node.Right, writer)
 		writer.WriteString(fmt.Sprintf("return %s\n", expr))
 	default:
 		// Handle other node types if necessary
@@ -69,31 +75,39 @@ func generateOptimizedTAC(node *Node, writer *bufio.Writer) {
 	}
 }
 
-func generateOptimizedExpressionTAC(node *Node, writer *bufio.Writer) string {
+// Function to handle values (check symbol table or create a new tempVar)
+func handleValue(node *Node, writer *bufio.Writer) string {
 	if node == nil {
 		return ""
 	}
 
-	switch node.Type {
-	case "NUMBER", "IDENTIFIER":
-		return node.Value
-	case "ADD", "SUB", "MULT", "DIV":
-		left := generateOptimizedExpressionTAC(node.Left, writer)
-		right := generateOptimizedExpressionTAC(node.Right, writer)
-		tempVar := getOptimizedTempVar()
-		line := fmt.Sprintf("%s = %s %s %s\n", tempVar, left, getOperatorSymbol(node.Type), right)
-		writer.WriteString(line)
-		return tempVar
-	default:
-		return node.Value
+	value := node.Value
+	nodeType := node.Type
+
+	// Check if the value already has an associated tempVar
+	if existingTempVar, exists := symbolTable[value]; exists {
+		// Value already has a tempVar, return it
+		return existingTempVar
 	}
+
+	// If not, create a new tempVar
+	tempVar := getOptimizedTempVar(nodeType)
+	line := fmt.Sprintf("%s = %s\n", tempVar, value)
+	writer.WriteString(line)
+
+	// Store the new tempVar in the symbol table
+	symbolTable[value] = tempVar
+
+	return tempVar
 }
 
 var optimizedTempVarCounter int
 
-func getOptimizedTempVar() string {
+// Function to generate a tempVar with type
+func getOptimizedTempVar(varType string) string {
 	optimizedTempVarCounter++
-	return fmt.Sprintf("opt_t%d", optimizedTempVarCounter)
+	tempVar := fmt.Sprintf("opt_t%d_%s", optimizedTempVarCounter, varType)
+	return tempVar
 }
 
 func getOperatorSymbol(nodeType string) string {

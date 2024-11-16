@@ -1,13 +1,14 @@
 .data
-word1: .asciiz "hello"
-word2: .asciiz " "
-word3: .asciiz "world"
-coolness: .asciiz "hello world"
+opt_t1_STRING: .asciiz "hello"
+opt_t2_STRING: .asciiz " "
+opt_t3_STRING: .asciiz "world"
+opt_t4_STRING: .asciiz "hello world"
+opt_t5_STRING: .asciiz "coolness"
 
 .text
 main:
 li $v0, 4
-la $a0, "coolness"
+la $a0, opt_t5_STRING
 syscall
 
 li $v0, 10
