@@ -22,12 +22,6 @@ func optimize_tac(root *Node, filename string) {
 	writer := bufio.NewWriter(file)
 	generateOptimizedTAC(root, writer)
 	writer.Flush()
-
-	// Output the symbol table for debugging purposes
-	fmt.Println("Symbol Table:")
-	for value, tempVar := range symbolTable {
-		fmt.Printf("%s -> %s\n", value, tempVar)
-	}
 }
 
 func generateOptimizedTAC(node *Node, writer *bufio.Writer) {
@@ -38,7 +32,7 @@ func generateOptimizedTAC(node *Node, writer *bufio.Writer) {
 	switch node.Type {
 	case "ASSIGN":
 		// Generate TAC for assignment
-		handleValue(node.Right, writer)
+		handleValue(node, writer)
 	case "FUNCTION_DECL":
 		// Handle function declaration
 		writer.WriteString(fmt.Sprintf("func %s:\n", node.Value))
@@ -81,24 +75,59 @@ func handleValue(node *Node, writer *bufio.Writer) string {
 		return ""
 	}
 
-	value := node.Value
-	nodeType := node.Type
+	if node.Type == "ASSIGN" {
+		// Get the value and type of the node
+		variableName := node.Left.Value
+		value := node.Right.Value
+		nodeType := node.Right.Type
 
-	// Check if the value already has an associated tempVar
-	if existingTempVar, exists := symbolTable[value]; exists {
-		// Value already has a tempVar, return it
-		return existingTempVar
+		// Check if the value already exists in the symbol table
+		existingTempVar, exists := symbolTable[variableName]
+		if exists {
+			// If it exists, return the associated tempVar
+			return existingTempVar
+		}
+
+		// If it doesn't exist, create a new tempVar
+		tempVar := getOptimizedTempVar(nodeType)
+
+		// Write the assignment of the value to the new tempVar in the TAC
+		line := fmt.Sprintf("%s = %s\n", tempVar, value)
+		writer.WriteString(line)
+
+		// Store the new tempVar in the symbol table
+		symbolTable[variableName] = tempVar
+
+		// Return the new tempVar
+		return tempVar
+
+	} else {
+
+		// Get the value and type of the node
+		value := node.Value
+		nodeType := node.Type
+
+		// Check if the value already exists in the symbol table
+		existingTempVar, exists := symbolTable[value]
+		if exists {
+			// If it exists, return the associated tempVar
+			return existingTempVar
+		}
+
+		// If it doesn't exist, create a new tempVar
+		tempVar := getOptimizedTempVar(nodeType)
+
+		// Write the assignment of the value to the new tempVar in the TAC
+		line := fmt.Sprintf("%s = %s\n", tempVar, value)
+		writer.WriteString(line)
+
+		// Store the new tempVar in the symbol table
+		symbolTable[value] = tempVar
+
+		// Return the new tempVar
+		return tempVar
+
 	}
-
-	// If not, create a new tempVar
-	tempVar := getOptimizedTempVar(nodeType)
-	line := fmt.Sprintf("%s = %s\n", tempVar, value)
-	writer.WriteString(line)
-
-	// Store the new tempVar in the symbol table
-	symbolTable[value] = tempVar
-
-	return tempVar
 }
 
 var optimizedTempVarCounter int

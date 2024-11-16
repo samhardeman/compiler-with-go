@@ -1,4 +1,4 @@
-string word1 = "hello"
+string word1 = "\nhello"
 string word2 = " world"
 char char1 = 'a'
 int x = 39

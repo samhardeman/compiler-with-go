@@ -37,8 +37,7 @@ func optimizer(root *Node) Node {
 		case "IF_STATEMENT":
 			optimizedIfNode := optimizeIfStatement(root, statement, index)
 			optimizedAST.Body = append(optimizedAST.Body, optimizedIfNode)
-		default:
-			fmt.Printf("  No optimization for statement of type %s\n", statement.Type)
+
 		}
 	}
 
@@ -96,6 +95,41 @@ func fold(root *Node, node *Node, index int) *Node {
 	case "ASSIGN":
 		node.Right = fold(root, node.Right, index)
 		return node
+	case "FUNCTION_CALL":
+		funcNode := searchForFunctions(root, index, node.Value)
+		params := node.Params
+
+		if len(funcNode.Params) != len(params) {
+			fmt.Println("Optimizer: more parameters than accepted!")
+			os.Exit(3)
+		}
+
+		var foldedParams []*Node
+		for paramIndex, param := range params {
+			paramNode := Node{
+				DType: "OP",
+				Type:  "ASSIGN",
+				Value: "=",
+				Right: fold(root, param, index),
+				Left:  funcNode.Params[paramIndex],
+			}
+			foldedParams = append(foldedParams, &paramNode)
+		}
+
+		foldedFunction := foldFunction(funcNode, foldedParams, index)
+		if foldedFunction.Type == "ASSIGN" {
+			return foldedFunction.Right
+		}
+		return foldedFunction
+	case "ARRAY_INDEX":
+		arrayIndexNode := fold(root, node.Body[0], index)
+		arrayNode := search(root, index, node.Value)
+
+		arrayIndex, _ := strconv.Atoi(arrayIndexNode.Value)
+
+		return arrayNode.Body[arrayIndex]
+	case "RETURN":
+		return fold(root, node, index)
 	case "IF_STATEMENT":
 		// Optimize the condition
 		if node.Left != nil {
@@ -152,6 +186,21 @@ func handleArithmetic(root *Node, node *Node, index int) *Node {
 			rightNode = resolvedRight
 		}
 	}
+
+	if leftNode.Type == "ARRAY_INDEX" {
+		resolvedLeft := fold(root, leftNode, index)
+		if resolvedLeft != nil {
+			leftNode = resolvedLeft
+		}
+	}
+
+	if rightNode.Type == "ARRAY_INDEX" {
+		resolvedRight := fold(root, rightNode, index)
+		if resolvedRight != nil {
+			rightNode = resolvedRight
+		}
+	}
+
 	// Resolve identifiers to their values, if necessary
 	if leftNode.Type == "ADD" || leftNode.Type == "SUB" || leftNode.Type == "MULT" || leftNode.Type == "DIV" {
 		leftNode = fold(root, leftNode, index)
