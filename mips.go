@@ -27,20 +27,64 @@ func parseTAC(lines []string) []TacInstruction {
 	for _, line := range lines {
 		// Find all matches using the regex
 		tokens := re.FindAllString(line, -1)
+		if len(tokens) == 0 {
+			continue
+		}
 
-		// Handle TAC format: var = value or call function arg
-		if len(tokens) == 3 && tokens[1] == "=" {
-			instructions = append(instructions, TacInstruction{
-				op:     "=",
-				arg1:   tokens[2],
-				result: tokens[0],
-			})
-		} else if tokens[0] == "call" {
-			instructions = append(instructions, TacInstruction{
-				op:   "call",
-				arg1: tokens[1],
-				arg2: tokens[2],
-			})
+		switch tokens[0] {
+		case "if":
+			// Format: if x goto L1
+			// Ensure the tokens match the expected pattern
+			if len(tokens) >= 4 && tokens[2] == "goto" {
+				instructions = append(instructions, TacInstruction{
+					op:     "if",
+					arg1:   tokens[1], // Condition variable or expression
+					result: tokens[3], // Label to jump to
+				})
+			} else {
+				fmt.Printf("Invalid 'if' instruction format: %v\n", tokens)
+				os.Exit(1)
+			}
+		case "goto":
+			// Format: goto L2
+			if len(tokens) >= 2 {
+				instructions = append(instructions, TacInstruction{
+					op:     "goto",
+					result: tokens[1], // Label to jump to
+				})
+			} else {
+				fmt.Printf("Invalid 'goto' instruction format: %v\n", tokens)
+				os.Exit(1)
+			}
+		default:
+			// Handle labels ending with ':'
+			if strings.HasSuffix(tokens[0], ":") {
+				// Remove the ':' from the label name
+				label := strings.TrimSuffix(tokens[0], ":")
+				instructions = append(instructions, TacInstruction{
+					op:     "label",
+					result: label,
+				})
+			} else if len(tokens) == 3 && tokens[1] == "=" {
+				// Handle assignments: var = value
+				instructions = append(instructions, TacInstruction{
+					op:     "=",
+					arg1:   tokens[2],
+					result: tokens[0],
+				})
+			} else if tokens[0] == "call" {
+				// Handle function calls: call function arg
+				if len(tokens) >= 3 {
+					instructions = append(instructions, TacInstruction{
+						op:   "call",
+						arg1: tokens[1], // Function name
+						arg2: tokens[2], // Argument
+					})
+				} else {
+					fmt.Printf("Invalid 'call' instruction format: %v\n", tokens)
+					os.Exit(1)
+				}
+			}
 		}
 	}
 	return instructions
@@ -69,61 +113,135 @@ func determineType(value string) string {
 func generateMIPS(instructions []TacInstruction) string {
 	var mipsCode strings.Builder
 
+	// Maps to keep track of variables and string literals
+	variables := make(map[string]bool)
+	stringLiterals := make(map[string]string)
+	labelCounter := 0
+
+	// First pass: Collect variables and string literals
+	for _, instr := range instructions {
+		switch instr.op {
+		case "=", "+", "-", "*", "/":
+			// Collect variables used in assignments and arithmetic operations
+			if isIdentifier(instr.result) {
+				variables[instr.result] = true
+			}
+			if isIdentifier(instr.arg1) {
+				variables[instr.arg1] = true
+			}
+			if isIdentifier(instr.arg2) {
+				variables[instr.arg2] = true
+			}
+		case "call":
+			// Collect variables and string literals in function calls
+			if instr.arg1 == "write" {
+				arg := instr.arg2
+				if len(arg) > 0 && arg[0] == '"' {
+					// String literal
+					if _, exists := stringLiterals[arg]; !exists {
+						label := fmt.Sprintf("str_%d", labelCounter)
+						labelCounter++
+						stringLiterals[arg] = label
+					}
+				} else if isIdentifier(arg) {
+					variables[arg] = true
+				}
+			}
+		case "if":
+			// Collect variables used in conditions
+			if isIdentifier(instr.arg1) {
+				variables[instr.arg1] = true
+			}
+		}
+	}
+
 	// Start .data section
 	mipsCode.WriteString(".data\n")
 
-	// Store variables in .data section
-	for _, instr := range instructions {
-		switch {
-		case instr.arg1[0] == '"':
-			// Handle string literals
-			mipsCode.WriteString(fmt.Sprintf("%s: .asciiz %s\n", instr.result, instr.arg1))
-		case instr.arg1[0] == '\'':
-			// Handle char literals (single quotes)
-			mipsCode.WriteString(fmt.Sprintf("%s: .byte %s\n", instr.result, instr.arg1))
-		case instr.arg1 == "True" || instr.arg1 == "False":
-			// Handle boolean values (1 for true, 0 for false)
-			boolVal := 0
-			if instr.arg1 == "True" {
-				boolVal = 1
-			}
-			mipsCode.WriteString(fmt.Sprintf("%s: .word %d\n", instr.result, boolVal))
-		case instr.arg1[0] >= '0' && instr.arg1[0] <= '9' || instr.arg1[0] == '-':
-			// Handle integer or float numbers
-			if strings.Contains(instr.arg1, ".") {
-				// Handle float numbers
-				mipsCode.WriteString(fmt.Sprintf("%s: .float %s\n", instr.result, instr.arg1))
-			} else {
-				// Handle integer numbers
-				mipsCode.WriteString(fmt.Sprintf("%s: .word %s\n", instr.result, instr.arg1))
-			}
-		}
+	// Declare variables
+	for varName := range variables {
+		mipsCode.WriteString(fmt.Sprintf("%s: .word 0\n", varName))
+	}
+
+	// Declare string literals
+	for strVal, label := range stringLiterals {
+		mipsCode.WriteString(fmt.Sprintf("%s: .asciiz %s\n", label, strVal))
 	}
 
 	// Start .text section
 	mipsCode.WriteString("\n.text\n")
 	mipsCode.WriteString("main:\n")
 
-	// Handle syscalls (call write)
+	// Generate MIPS code for each instruction
 	for _, instr := range instructions {
-		if instr.op == "call" && instr.arg1 == "write" {
-			// Handle writing the correct variable
-			if instr.arg2[0] == '"' {
-				// Write a string
-				mipsCode.WriteString(fmt.Sprintf("li $v0, 4\nla $a0, %s\nsyscall\n", instr.arg2))
-			} else if instr.arg2[0] == '\'' {
-				// Write a character
-				mipsCode.WriteString(fmt.Sprintf("li $v0, 11\nlb $a0, %s\nsyscall\n", instr.arg2))
-			} else if instr.arg2 == "True" || instr.arg2 == "False" {
-				// Print boolean (int 1 or 0)
-				mipsCode.WriteString(fmt.Sprintf("li $v0, 1\nlw $a0, %s\nsyscall\n", instr.arg2))
-			} else if strings.Contains(instr.arg2, ".") {
-				// Print float
-				mipsCode.WriteString(fmt.Sprintf("li $v0, 2\nl.s $f12, %s\nsyscall\n", instr.arg2))
+		switch instr.op {
+		case "=":
+			// Assignment operation
+			if len(instr.arg1) > 0 && instr.arg1[0] == '"' {
+				// String assignment
+				label := stringLiterals[instr.arg1]
+				mipsCode.WriteString(fmt.Sprintf("la $t0, %s\n", label))
+				mipsCode.WriteString(fmt.Sprintf("sw $t0, %s\n", instr.result))
+			} else if isNumeric(instr.arg1) {
+				// Immediate value assignment
+				mipsCode.WriteString(fmt.Sprintf("li $t0, %s\n", instr.arg1))
+				mipsCode.WriteString(fmt.Sprintf("sw $t0, %s\n", instr.result))
 			} else {
-				// Print integer
-				mipsCode.WriteString(fmt.Sprintf("li $v0, 1\nlw $a0, %s\nsyscall\n", instr.arg2))
+				// Assignment from another variable
+				mipsCode.WriteString(fmt.Sprintf("lw $t0, %s\n", instr.arg1))
+				mipsCode.WriteString(fmt.Sprintf("sw $t0, %s\n", instr.result))
 			}
+		case "+", "-", "*", "/":
+			// Arithmetic operations
+			// Load operands
+			loadOperand(instr.arg1, "$t0", &mipsCode)
+			loadOperand(instr.arg2, "$t1", &mipsCode)
+			// Perform operation
+			switch instr.op {
+			case "+":
+				mipsCode.WriteString("add $t2, $t0, $t1\n")
+			case "-":
+				mipsCode.WriteString("sub $t2, $t0, $t1\n")
+			case "*":
+				mipsCode.WriteString("mul $t2, $t0, $t1\n")
+			case "/":
+				mipsCode.WriteString("div $t0, $t1\n")
+				mipsCode.WriteString("mflo $t2\n")
+			}
+			// Store result
+			mipsCode.WriteString(fmt.Sprintf("sw $t2, %s\n", instr.result))
+		case "call":
+			if instr.arg1 == "write" {
+				// Handle 'write' function call
+				arg := instr.arg2
+				if len(arg) > 0 && arg[0] == '"' {
+					// String literal
+					label := stringLiterals[arg]
+					mipsCode.WriteString("li $v0, 4\n")
+					mipsCode.WriteString(fmt.Sprintf("la $a0, %s\n", label))
+					mipsCode.WriteString("syscall\n")
+				} else if isNumeric(arg) {
+					// Immediate integer
+					mipsCode.WriteString("li $v0, 1\n")
+					mipsCode.WriteString(fmt.Sprintf("li $a0, %s\n", arg))
+					mipsCode.WriteString("syscall\n")
+				} else {
+					// Variable
+					mipsCode.WriteString(fmt.Sprintf("lw $a0, %s\n", arg))
+					mipsCode.WriteString("li $v0, 1\n")
+					mipsCode.WriteString("syscall\n")
+				}
+			}
+		case "if":
+			// Conditional branch
+			loadOperand(instr.arg1, "$t0", &mipsCode)
+			mipsCode.WriteString(fmt.Sprintf("bne $t0, $zero, %s\n", instr.result))
+		case "goto":
+			// Unconditional jump
+			mipsCode.WriteString(fmt.Sprintf("j %s\n", instr.result))
+		case "label":
+			// Label
+			mipsCode.WriteString(fmt.Sprintf("%s:\n", instr.result))
 		}
 	}
 
@@ -186,4 +304,21 @@ func tac2Mips(filename string) {
 	}
 
 	fmt.Printf("MIPS code has been written to %s\n", outputFile)
+}
+
+// Checks if a string represents a numeric constant
+func isNumeric(s string) bool {
+	_, err := strconv.Atoi(s)
+	return err == nil
+}
+
+// Loads an operand (variable or immediate value) into a register
+func loadOperand(operand string, register string, mipsCode *strings.Builder) {
+	if isNumeric(operand) {
+		// Immediate value
+		mipsCode.WriteString(fmt.Sprintf("li %s, %s\n", register, operand))
+	} else {
+		// Variable
+		mipsCode.WriteString(fmt.Sprintf("lw %s, %s\n", register, operand))
+	}
 }

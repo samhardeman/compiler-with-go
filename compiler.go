@@ -44,7 +44,7 @@ func main() {
 	optimize_tac(&optimizedAST, "output.tac")
 	fmt.Println("Tac Complete! Compiling to MIPS...")
 	tac2Mips("output.tac")
-	fmt.Println("Finished! 【=◈ ︿◈ =】")
+	fmt.Println("Finished! 【=◈ ︿ ◈=】")
 }
 
 func getFlags() string {
@@ -74,11 +74,17 @@ func readLines(inputFile string) []string {
 
 	// for each line, append the line to the code array
 	for scanner.Scan() {
-		// splits line into tokens
-		re := regexp.MustCompile(`"(.*?)"|\S+`)
-		tokens := re.FindAllString(scanner.Text(), -1)
+		lineText := scanner.Text()
+		fmt.Printf("Raw Line: %q\n", lineText)
+
+		// Updated regex pattern to handle strings with spaces and escaped quotes
+		re := regexp.MustCompile(`"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\S+`)
+		tokens := re.FindAllString(lineText, -1)
 		splitStringInPlace(&tokens)
 		tokens = append(tokens, "\n")
+
+		fmt.Println("Tokens:", tokens)
+
 		code = append(code, tokens...)
 	}
 
@@ -153,6 +159,11 @@ func parse(tokens []string, root *Node) *Node {
 			}
 
 			i = endLineIndex
+		case token == "if":
+			// Parse the 'if' statement
+			endIndex := parseIfStatement(tokens[i:], line, root, &body)
+			i += endIndex
+
 		case token == "[":
 			var arrayDecl *Node
 			endLineIndex := findEndLine(tokens[i:]) + i
@@ -655,22 +666,21 @@ func isIdentifier(word string) bool {
 
 // SplitStringInPlace splits mixed strings (like "add(int" or "b)") in the array in place
 func splitStringInPlace(arr *[]string) {
-	// Updated regex pattern:
-	// 1. Matches quoted strings: "..." or '...'
-	// 2. Matches decimal numbers as a single token (e.g., 123.45)
-	// 3. Matches identifiers and other symbols, operators, etc.
-	pattern := regexp.MustCompile(`"[^"]*"|'[^']*'|\b\d+\.\d+\b|[a-zA-Z0-9]+|[(){}[\];,+\-*/%=<>!]`)
-	// Create a new slice to store the modified array
+	pattern := regexp.MustCompile(`"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\b\d+\.\d+\b|>=|<=|==|!=|[a-zA-Z0-9]+|[(){}[\];,+\-*/%=<>!]`)
 	var result []string
 
 	for _, str := range *arr {
+		// If the string is a quoted string, don't split it
+		if len(str) >= 2 && (str[0] == '"' && str[len(str)-1] == '"') ||
+			(str[0] == '\'' && str[len(str)-1] == '\'') {
+			result = append(result, str)
+			continue
+		}
 		// Find all matches based on the regex pattern
 		matches := pattern.FindAllString(str, -1)
-		// Append the split matches to the result array
 		result = append(result, matches...)
 	}
 
-	// Replace the original array content with the new split elements
 	*arr = result
 }
 
@@ -783,6 +793,22 @@ func operatorTypeComparison(node *Node) {
 		fmt.Println("Type mismatch between " + node.Left.Value + " (" + node.Left.DType + ") " + "and " + node.Right.Value + " (" + node.Right.DType + ") " + " Error: line " + strconv.Itoa(line))
 		os.Exit(3)
 	}
+
+	// For comparison operators, set DType to BOOL
+	comparisonOperators := map[string]bool{
+		"GREATER_THAN":  true,
+		"LESS_THAN":     true,
+		"GREATER_EQUAL": true,
+		"LESS_EQUAL":    true,
+		"EQUAL_TO":      true,
+		"NOT_EQUAL":     true,
+	}
+
+	if comparisonOperators[node.Type] {
+		node.DType = "BOOL"
+	} else {
+		node.DType = node.Left.DType
+	}
 }
 
 func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
@@ -792,40 +818,15 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 	dataType := detectType(strings.Join(tokens, ""))
 
 	if dataType != "unknown" && dataType != "" {
-		switch dataType {
-		case "INT":
-			newNode = Node{
-				Type:  dataType,
-				DType: dataType,
-				Value: strings.Join(tokens, ""),
-			}
-		case "STRING":
-			newNode = Node{
-				Type:  dataType,
-				DType: dataType,
-				Value: strings.Join(tokens, ""),
-			}
-		case "CHAR":
-			newNode = Node{
-				Type:  dataType,
-				DType: dataType,
-				Value: strings.Join(tokens, ""),
-			}
-		case "FLOAT":
-			newNode = Node{
-				Type:  dataType,
-				DType: dataType,
-				Value: strings.Join(tokens, ""),
-			}
-		case "BOOL":
-			newNode = Node{
-				Type:  dataType,
-				DType: dataType,
-				Value: strings.Join(tokens, ""),
-			}
+		// Handle literals
+		newNode = Node{
+			Type:  dataType,
+			DType: dataType,
+			Value: strings.Join(tokens, ""),
 		}
 	} else {
-		if slices.Contains(tokens, "=") {
+		if slices.Contains(tokens, "=") && !slices.Contains(tokens, "==") {
+			// Handle assignment '=' but not '=='
 			newNode = Node{
 				Type:  "ASSIGN",
 				DType: "OP",
@@ -849,86 +850,90 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 				operatorTypeComparison(&newNode)
 			}
 
+		} else if slices.Contains(tokens, "==") {
+			newNode = Node{
+				Type:  "EQUAL_TO",
+				DType: "BOOL",
+				Value: "==",
+				Left:  parseGeneric(bisect(tokens, "==", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, "==", "right"), lineNumber, root),
+			}
+			operatorTypeComparison(&newNode)
+		} else if slices.Contains(tokens, "!=") {
+			newNode = Node{
+				Type:  "NOT_EQUAL",
+				DType: "BOOL",
+				Value: "!=",
+				Left:  parseGeneric(bisect(tokens, "!=", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, "!=", "right"), lineNumber, root),
+			}
+			operatorTypeComparison(&newNode)
+		} else if slices.Contains(tokens, ">=") {
+			newNode = Node{
+				Type:  "GREATER_EQUAL",
+				DType: "BOOL",
+				Value: ">=",
+				Left:  parseGeneric(bisect(tokens, ">=", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, ">=", "right"), lineNumber, root),
+			}
+			operatorTypeComparison(&newNode)
+		} else if slices.Contains(tokens, "<=") {
+			newNode = Node{
+				Type:  "LESS_EQUAL",
+				DType: "BOOL",
+				Value: "<=",
+				Left:  parseGeneric(bisect(tokens, "<=", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, "<=", "right"), lineNumber, root),
+			}
+			operatorTypeComparison(&newNode)
+		} else if slices.Contains(tokens, ">") {
+			newNode = Node{
+				Type:  "GREATER_THAN",
+				DType: "BOOL",
+				Value: ">",
+				Left:  parseGeneric(bisect(tokens, ">", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, ">", "right"), lineNumber, root),
+			}
+			operatorTypeComparison(&newNode)
+		} else if slices.Contains(tokens, "<") {
+			newNode = Node{
+				Type:  "LESS_THAN",
+				DType: "BOOL",
+				Value: "<",
+				Left:  parseGeneric(bisect(tokens, "<", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, "<", "right"), lineNumber, root),
+			}
+			operatorTypeComparison(&newNode)
 		} else if slices.Contains(tokens, "*") {
-			newNode = Node{
-				Type:  "MULT",
-				DType: "OP",
-				Value: "*",
-				Left:  parseGeneric(bisect(tokens, "*", "left"), lineNumber, root),
-				Right: parseGeneric(bisect(tokens, "*", "right"), lineNumber, root),
-			}
-
-			operatorTypeComparison(&newNode)
-
-			newNode.DType = newNode.Left.DType
-
+			// ... existing code for multiplication ...
 		} else if slices.Contains(tokens, "/") {
-			newNode = Node{
-				Type:  "DIV",
-				DType: "OP",
-				Value: "/",
-				Left:  parseGeneric(bisect(tokens, "/", "left"), lineNumber, root),
-				Right: parseGeneric(bisect(tokens, "/", "right"), lineNumber, root),
-			}
-
-			operatorTypeComparison(&newNode)
-
-			newNode.DType = newNode.Left.DType
-
+			// ... existing code for division ...
 		} else if slices.Contains(tokens, "+") {
-			newNode = Node{
-				Type:  "ADD",
-				DType: "OP",
-				Value: "+",
-				Left:  parseGeneric(bisect(tokens, "+", "left"), lineNumber, root),
-				Right: parseGeneric(bisect(tokens, "+", "right"), lineNumber, root),
-			}
-
-			operatorTypeComparison(&newNode)
-
-			newNode.DType = newNode.Left.DType
-
+			// ... existing code for addition ...
 		} else if slices.Contains(tokens, "-") {
-			newNode = Node{
-				Type:  "SUB",
-				DType: "OP",
-				Value: "-",
-				Left:  parseGeneric(bisect(tokens, "-", "left"), lineNumber, root),
-				Right: parseGeneric(bisect(tokens, "-", "right"), lineNumber, root),
-			}
-
-			operatorTypeComparison(&newNode)
-
-			newNode.DType = newNode.Left.DType
-
+			// ... existing code for subtraction ...
 		} else if slices.Contains(tokens, "(") {
-			newNode = parseFunctionCall(tokens, line, root)
+			newNode = parseFunctionCall(tokens, lineNumber, root)
 		} else if slices.Contains(tokens, "{") {
-			newNode = parseArray(tokens, line, root)
+			newNode = parseArray(tokens, lineNumber, root)
 		} else if slices.Contains(tokens, "[") {
 			newNode = parseArrayIndex(tokens, lineNumber, root)
 		} else if isIdentifier(tokens[0]) {
-
+			// Handle identifiers
 			newNode = Node{
 				Type:  "IDENTIFIER",
 				Value: tokens[0],
 			}
-
 			returnType := returnType(root, &newNode)
-
 			newNode.DType = returnType
-
 			isValid := symbolMan(root, &newNode)
-
 			if !isValid {
 				fmt.Println("Previously undeclared variable assignment: "+tokens[0]+" on line", line)
 				os.Exit(3)
 			}
-
 		} else {
 			fmt.Println("Unrecognized character \"" + tokens[0] + "\" on line " + strconv.Itoa(line))
 			os.Exit(3)
-
 		}
 	}
 
@@ -998,4 +1003,99 @@ func containsDecimal(token string) bool {
 		}
 	}
 	return false
+}
+func parseIfStatement(tokens []string, lineNumber int, root *Node, body *[]*Node) int {
+	i := 1 // Skip the 'if' token
+
+	// Ensure the next token is '('
+	if tokens[i] != "(" {
+		fmt.Println("Expected '(' after 'if' on line", lineNumber)
+		os.Exit(3)
+	}
+	i++
+
+	// Find the matching ')'
+	conditionEndIndex := findMatchingToken(tokens, i-1, "(", ")")
+	if conditionEndIndex == -1 {
+		fmt.Println("Expected ')' to close 'if' condition on line", lineNumber)
+		os.Exit(3)
+	}
+	conditionTokens := tokens[i:conditionEndIndex]
+	conditionNode := parseGeneric(conditionTokens, lineNumber, root)
+	i = conditionEndIndex + 1
+
+	// Ensure the next token is '{'
+	if tokens[i] != "{" {
+		fmt.Println("Expected '{' after 'if' condition on line", lineNumber)
+		os.Exit(3)
+	}
+	i++
+
+	// Find the matching '}'
+	bodyEndIndex := findMatchingToken(tokens, i-1, "{", "}")
+	if bodyEndIndex == -1 {
+		fmt.Println("Expected '}' to close 'if' body on line", lineNumber)
+		os.Exit(3)
+	}
+	bodyTokens := tokens[i:bodyEndIndex]
+	ifBodyNode := parse(bodyTokens, root)
+	i = bodyEndIndex + 1
+
+	// Create the 'if' node
+	ifNode := Node{
+		Type: "IF_STATEMENT",
+		Left: conditionNode,
+		Body: ifBodyNode.Body,
+	}
+
+	// Check for 'else' clause
+	if i < len(tokens) && tokens[i] == "else" {
+		i++
+
+		// Ensure the next token is '{'
+		if tokens[i] != "{" {
+			fmt.Println("Expected '{' after 'else' on line", lineNumber)
+			os.Exit(3)
+		}
+		i++
+
+		// Find the matching '}'
+		elseBodyEndIndex := findMatchingToken(tokens, i-1, "{", "}")
+		if elseBodyEndIndex == -1 {
+			fmt.Println("Expected '}' to close 'else' body on line", lineNumber)
+			os.Exit(3)
+		}
+		elseBodyTokens := tokens[i:elseBodyEndIndex]
+		elseBodyNode := parse(elseBodyTokens, root)
+		i = elseBodyEndIndex + 1
+
+		elseNode := Node{
+			Type: "ELSE_STATEMENT",
+			Body: elseBodyNode.Body,
+		}
+
+		ifNode.Right = &elseNode
+	}
+
+	// Append the 'if' node to the current body
+	*body = append(*body, &ifNode)
+
+	// Return the number of tokens consumed
+	return i
+}
+
+func findMatchingToken(tokens []string, startIndex int, openToken string, closeToken string) int {
+	depth := 0
+	for i := startIndex; i < len(tokens); i++ {
+		if tokens[i] == openToken {
+			depth++
+		} else if tokens[i] == closeToken {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	// If we reach here, no matching closing token found
+	return -1
 }

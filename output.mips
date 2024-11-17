@@ -1,13 +1,19 @@
 .data
-a: .word 5
-b: .word 6
-c: .word 11
-words: .asciiz "hello world"
+x: .word 0
+y: .word 0
+a: .word 0
 
 .text
 main:
+li $t0, 10
+sw $t0, x
+li $t0, 5
+sw $t0, y
+lw $a0, a
 li $v0, 1
-lw $a0, c
+syscall
+lw $a0, a
+li $v0, 1
 syscall
 
 li $v0, 10

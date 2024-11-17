@@ -1,5 +1,12 @@
-int a = 5
-int b = 6
-int c = a + b
-string words = "hello world"
-write(c)
+int x = 10
+int y = 5
+
+func greater(int a, int b){
+    if (a > b) {
+
+        write(a)
+    }
+    write(b)
+}
+
+greater(x, y)

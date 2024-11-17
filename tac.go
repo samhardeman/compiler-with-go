@@ -53,6 +53,38 @@ func generateOptimizedTAC(node *Node, writer *bufio.Writer) {
 		// Handle return statement
 		expr := generateOptimizedExpressionTAC(node.Right, writer)
 		writer.WriteString(fmt.Sprintf("return %s\n", expr))
+	case "IF_STATEMENT":
+		// Generate TAC for the condition
+		conditionVar := generateOptimizedExpressionTAC(node.Left, writer)
+
+		// Create labels for branching
+		trueLabel := getNewLabel()
+		endLabel := getNewLabel()
+
+		// Write TAC for the conditional jump
+		writer.WriteString(fmt.Sprintf("if %s goto %s\n", conditionVar, trueLabel))
+
+		// Generate TAC for the 'else' body if it exists
+		if node.Right != nil && node.Right.Type == "ELSE_STATEMENT" {
+			// Generate TAC for 'else' body
+			for _, stmt := range node.Right.Body {
+				generateOptimizedTAC(stmt, writer)
+			}
+		}
+
+		// Jump to end after 'else' body
+		writer.WriteString(fmt.Sprintf("goto %s\n", endLabel))
+
+		// Label for the 'if' body
+		writer.WriteString(fmt.Sprintf("%s:\n", trueLabel))
+
+		// Generate TAC for 'if' body
+		for _, stmt := range node.Body {
+			generateOptimizedTAC(stmt, writer)
+		}
+
+		// End label
+		writer.WriteString(fmt.Sprintf("%s:\n", endLabel))
 	default:
 		// Handle other node types if necessary
 	}
@@ -75,7 +107,9 @@ func generateOptimizedExpressionTAC(node *Node, writer *bufio.Writer) string {
 	}
 
 	switch node.Type {
-	case "NUMBER", "IDENTIFIER":
+	case "NUMBER", "INT", "FLOAT", "CHAR", "STRING", "BOOL":
+		return node.Value
+	case "IDENTIFIER":
 		return node.Value
 	case "ADD", "SUB", "MULT", "DIV":
 		left := generateOptimizedExpressionTAC(node.Left, writer)
@@ -84,7 +118,17 @@ func generateOptimizedExpressionTAC(node *Node, writer *bufio.Writer) string {
 		line := fmt.Sprintf("%s = %s %s %s\n", tempVar, left, getOperatorSymbol(node.Type), right)
 		writer.WriteString(line)
 		return tempVar
+	case "GREATER_THAN", "LESS_THAN", "GREATER_EQUAL", "LESS_EQUAL", "EQUAL_TO", "NOT_EQUAL":
+		left := generateOptimizedExpressionTAC(node.Left, writer)
+		right := generateOptimizedExpressionTAC(node.Right, writer)
+		tempVar := getOptimizedTempVar()
+		operator := getOperatorSymbol(node.Type)
+		// Generate TAC for the comparison operation
+		line := fmt.Sprintf("%s = %s %s %s\n", tempVar, left, operator, right)
+		writer.WriteString(line)
+		return tempVar
 	default:
+		fmt.Printf("Unhandled node type in expression: %s\n", node.Type)
 		return ""
 	}
 }
@@ -106,7 +150,27 @@ func getOperatorSymbol(nodeType string) string {
 		return "*"
 	case "DIV":
 		return "/"
+	case "GREATER_THAN":
+		return ">"
+	case "LESS_THAN":
+		return "<"
+	case "GREATER_EQUAL":
+		return ">="
+	case "LESS_EQUAL":
+		return "<="
+	case "EQUAL_TO":
+		return "=="
+	case "NOT_EQUAL":
+		return "!="
 	default:
 		return ""
 	}
+}
+
+var labelCounter int
+
+func getNewLabel() string {
+	label := fmt.Sprintf("L%d", labelCounter)
+	labelCounter++
+	return label
 }
