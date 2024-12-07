@@ -153,6 +153,13 @@ func parse(tokens []string, root *Node) *Node {
 			}
 
 			i = endLineIndex
+
+		case token == "if":
+			// Pass the entire slice from 'if' onward to parseIfStatement
+			ifNode, tokensConsumed := parseIfStatement(tokens[i:], line, root)
+			body = append(body, &ifNode)
+			i += tokensConsumed
+
 		case token == "[":
 			var arrayDecl *Node
 			endLineIndex := findEndLine(tokens[i:]) + i
@@ -582,18 +589,29 @@ func parseWrite(tokens []string, lineNumber int, root *Node) Node {
 }
 
 func parseFunctionCall(tokens []string, lineNumber int, root *Node) Node {
+	// Special case - skip if it's an else statement
+	if tokens[0] == "else" {
+		return Node{} // Return empty node which will be handled by the if statement parsing
+	}
+
 	newNode := Node{
 		Type:  "FUNCTION_CALL",
-		Value: tokens[0], // The function name (e.g., 'print')
+		Value: tokens[0],
 	}
 
 	functionDeclared := false
 
-	for _, declared := range root.Declared {
-		if declared.Value == newNode.Value {
-			newNode.DType = declared.DType
-			functionDeclared = true
-			break
+	// Check if this is a built-in function
+	if tokens[0] == "write" {
+		functionDeclared = true
+	} else {
+		// Check if the function has been declared
+		for _, declared := range root.Declared {
+			if declared.Value == newNode.Value {
+				newNode.DType = declared.DType
+				functionDeclared = true
+				break
+			}
 		}
 	}
 
@@ -602,25 +620,21 @@ func parseFunctionCall(tokens []string, lineNumber int, root *Node) Node {
 		os.Exit(3)
 	}
 
-	// Expect the second token to be an opening parenthesis
+	// Rest of the function remains the same
 	if tokens[1] != "(" {
 		fmt.Println("Expected \"(\" after function name, got " + tokens[1] + " on line " + strconv.Itoa(lineNumber))
 		os.Exit(3)
 	}
 
-	// Find the closing parenthesis
 	closeParenIndex := slices.Index(tokens, ")")
 	if closeParenIndex == -1 {
 		fmt.Println("Expected \")\" to close function call on line " + strconv.Itoa(lineNumber))
 		os.Exit(3)
 	}
 
-	// Extract the arguments between parentheses
 	args := tokens[2:closeParenIndex]
 
-	// Parse each argument and add it to the function's Params
-
-	for i := 0; i < (len(args)); i += 2 {
+	for i := 0; i < len(args); i += 2 {
 		if args[i] == "," {
 			fmt.Println("Unexpected character \"" + args[i] + "\" in parameters call on line " + strconv.Itoa(lineNumber))
 			os.Exit(3)
@@ -731,25 +745,34 @@ func getBranch(isTail bool) string {
 }
 
 func findEndLine(chunk []string) int {
-	var endLineIndex int
+	bracketCount := 0
 
-	newLineIndex := slices.Index(chunk, "\n")
-
-	semiIndex := slices.Index(chunk, ";")
-
-	if semiIndex == -1 {
-		endLineIndex = newLineIndex
-
-	} else if newLineIndex > semiIndex {
-		endLineIndex = newLineIndex
-
-	} else {
-		endLineIndex = semiIndex
-
+	for i, token := range chunk {
+		switch token {
+		case "{":
+			bracketCount++
+		case "}":
+			bracketCount--
+			if bracketCount == 0 {
+				return i
+			}
+		case "\n":
+			if bracketCount == 0 {
+				return i
+			}
+		case ";":
+			if bracketCount == 0 {
+				return i
+			}
+		}
 	}
 
-	return endLineIndex
+	// If we're still in a block, return the length of the chunk
+	if bracketCount > 0 {
+		return len(chunk)
+	}
 
+	return 0
 }
 
 func bisect(expression []string, character string, direction string) []string {
@@ -849,6 +872,51 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 				operatorTypeComparison(&newNode)
 			}
 
+		} else if slices.Contains(tokens, ">") {
+			newNode = Node{
+				Type:  "GREATER_THAN",
+				DType: "BOOL",
+				Value: ">",
+				Left:  parseGeneric(bisect(tokens, ">", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, ">", "right"), lineNumber, root),
+			}
+
+			// Check that we're comparing compatible types
+			if newNode.Left.DType != newNode.Right.DType {
+				fmt.Printf("Cannot compare values of different types: %s and %s on line %d\n",
+					newNode.Left.DType, newNode.Right.DType, lineNumber)
+				os.Exit(3)
+			}
+
+		} else if slices.Contains(tokens, "<") {
+			newNode = Node{
+				Type:  "LESS_THAN",
+				DType: "BOOL",
+				Value: "<",
+				Left:  parseGeneric(bisect(tokens, "<", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, "<", "right"), lineNumber, root),
+			}
+
+			if newNode.Left.DType != newNode.Right.DType {
+				fmt.Printf("Cannot compare values of different types: %s and %s on line %d\n",
+					newNode.Left.DType, newNode.Right.DType, lineNumber)
+				os.Exit(3)
+			}
+
+		} else if slices.Contains(tokens, "==") {
+			newNode = Node{
+				Type:  "EQUALS",
+				DType: "BOOL",
+				Value: "==",
+				Left:  parseGeneric(bisect(tokens, "==", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, "==", "right"), lineNumber, root),
+			}
+
+			if newNode.Left.DType != newNode.Right.DType {
+				fmt.Printf("Cannot compare values of different types: %s and %s on line %d\n",
+					newNode.Left.DType, newNode.Right.DType, lineNumber)
+				os.Exit(3)
+			}
 		} else if slices.Contains(tokens, "*") {
 			newNode = Node{
 				Type:  "MULT",
@@ -998,4 +1066,105 @@ func containsDecimal(token string) bool {
 		}
 	}
 	return false
+}
+func findIfBlockEnd(tokens []string) int {
+	braceCount := 0
+	for i, token := range tokens {
+		if token == "{" {
+			braceCount++
+		} else if token == "}" {
+			braceCount--
+			if braceCount == 0 {
+				return i + 1 // return the position after the closing brace
+			}
+		}
+	}
+	return len(tokens) // fallback if braces are malformed
+}
+
+// Update parseIfStatement to handle the blocks properly
+func parseIfStatement(tokens []string, lineNumber int, root *Node) (Node, int) {
+	newNode := Node{
+		Type:  "IF_STATEMENT",
+		Value: "if",
+		Body:  []*Node{},
+	}
+
+	openParenIndex := slices.Index(tokens, "(")
+	closeParenIndex := slices.Index(tokens, ")")
+	if openParenIndex == -1 || closeParenIndex == -1 {
+		fmt.Printf("Missing parentheses in if statement on line %d\n", lineNumber)
+		os.Exit(3)
+	}
+
+	conditionTokens := tokens[openParenIndex+1 : closeParenIndex]
+	condition := parseGeneric(conditionTokens, lineNumber, root)
+	newNode.Left = condition
+
+	// Find '{' that starts the if block
+	ifBlockStart := slices.Index(tokens[closeParenIndex:], "{")
+	if ifBlockStart == -1 {
+		fmt.Printf("Missing '{' for if block on line %d\n", lineNumber)
+		os.Exit(3)
+	}
+	ifBlockStart += closeParenIndex
+
+	// Find matching '}'
+	ifBlockEnd := findMatchingBrace(tokens, ifBlockStart)
+	if ifBlockEnd == -1 {
+		fmt.Printf("Missing closing '}' for if block on line %d\n", lineNumber)
+		os.Exit(3)
+	}
+
+	// Parse if block body
+	ifBlockTokens := tokens[ifBlockStart+1 : ifBlockEnd]
+	ifBlockNode := parse(ifBlockTokens, root)
+	newNode.Body = ifBlockNode.Body
+
+	tokensConsumed := ifBlockEnd + 1
+
+	// Check for else
+	if tokensConsumed < len(tokens) && tokens[tokensConsumed] == "else" {
+		tokensConsumed++ // skip 'else'
+		if tokensConsumed < len(tokens) && tokens[tokensConsumed] == "{" {
+			elseStart := tokensConsumed
+			elseEnd := findMatchingBrace(tokens, elseStart)
+			if elseEnd == -1 {
+				fmt.Printf("Missing closing '}' for else block on line %d\n", lineNumber)
+				os.Exit(3)
+			}
+
+			elseTokens := tokens[elseStart+1 : elseEnd]
+			elseBlockNode := parse(elseTokens, root)
+			elseNode := Node{
+				Type:  "ELSE_STATEMENT",
+				Value: "else",
+				Body:  elseBlockNode.Body,
+			}
+			newNode.Right = &elseNode
+
+			tokensConsumed = elseEnd + 1
+		} else {
+			fmt.Printf("Missing '{' after else on line %d\n", lineNumber)
+			os.Exit(3)
+		}
+	}
+
+	return newNode, tokensConsumed
+}
+
+// Helper function to find matching closing brace
+func findMatchingBrace(tokens []string, openIndex int) int {
+	count := 1
+	for i := openIndex + 1; i < len(tokens); i++ {
+		if tokens[i] == "{" {
+			count++
+		} else if tokens[i] == "}" {
+			count--
+			if count == 0 {
+				return i
+			}
+		}
+	}
+	return -1
 }

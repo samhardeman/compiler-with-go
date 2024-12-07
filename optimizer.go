@@ -60,6 +60,11 @@ func optimizer(root *Node) Node {
 			}
 		case "IF_STATEMENT":
 			optimizedIfNode := optimizeIfStatement(root, statement, index)
+			// Debug print to verify if statement structure
+			fmt.Printf("Debug: Optimized if node structure:\n")
+			fmt.Printf("  Has condition: %v\n", optimizedIfNode.Left != nil)
+			fmt.Printf("  Has if body: %v\n", len(optimizedIfNode.Body) > 0)
+			fmt.Printf("  Has else: %v\n", optimizedIfNode.Right != nil)
 			optimizedAST.Body = append(optimizedAST.Body, optimizedIfNode)
 
 		}
@@ -69,37 +74,47 @@ func optimizer(root *Node) Node {
 }
 
 func optimizeIfStatement(root *Node, ifNode *Node, index int) *Node {
-	// Optimize the condition
-	ifNode.Left = fold(root, ifNode.Left, index)
+	newIfNode := &Node{
+		Type:  "IF_STATEMENT",
+		Value: "if",
+		Body:  []*Node{},
+	}
 
-	// Optimize the 'if' body
-	if len(ifNode.Body) > 0 {
-		optimizedBody := []*Node{}
-		for idx, stmt := range ifNode.Body {
-			optimizedStmt := fold(root, stmt, idx)
+	// Optimize condition
+	if ifNode.Left != nil {
+		newIfNode.Left = fold(root, ifNode.Left, index)
+	}
+
+	// Optimize if body
+	for _, stmt := range ifNode.Body {
+		optimizedStmt := fold(root, stmt, index)
+		if optimizedStmt != nil {
+			newIfNode.Body = append(newIfNode.Body, optimizedStmt)
+		}
+	}
+
+	// Optimize else body if it exists
+	if ifNode.Right != nil {
+		newElseNode := &Node{
+			Type:  "ELSE_STATEMENT",
+			Value: "else",
+			Body:  []*Node{},
+		}
+
+		for _, stmt := range ifNode.Right.Body {
+			optimizedStmt := fold(root, stmt, index)
 			if optimizedStmt != nil {
-				optimizedBody = append(optimizedBody, optimizedStmt)
+				newElseNode.Body = append(newElseNode.Body, optimizedStmt)
 			}
 		}
-		ifNode.Body = optimizedBody
-	}
 
-	// Optimize the 'else' body, if present
-	if ifNode.Right != nil && ifNode.Right.Type == "ELSE_STATEMENT" {
-		elseNode := ifNode.Right
-		if len(elseNode.Body) > 0 {
-			optimizedElseBody := []*Node{}
-			for idx, stmt := range elseNode.Body {
-				optimizedStmt := fold(root, stmt, idx)
-				if optimizedStmt != nil {
-					optimizedElseBody = append(optimizedElseBody, optimizedStmt)
-				}
-			}
-			elseNode.Body = optimizedElseBody
+		// Only set the else node if it has statements
+		if len(newElseNode.Body) > 0 {
+			newIfNode.Right = newElseNode
 		}
 	}
 
-	return ifNode
+	return newIfNode
 }
 
 func fold(root *Node, node *Node, index int) *Node {
@@ -163,33 +178,21 @@ func fold(root *Node, node *Node, index int) *Node {
 	case "RETURN":
 		return fold(root, node, index)
 	case "IF_STATEMENT":
-		// Optimize the condition
-		if node.Left != nil {
-			node.Left = fold(root, node.Left, index)
+		return optimizeIfStatement(root, node, index)
+	case "ELSE_STATEMENT":
+		// Create new else node with optimized body
+		newElseNode := &Node{
+			Type:  "ELSE_STATEMENT",
+			Value: "else",
+			Body:  []*Node{},
 		}
-
-		// Optimize the 'if' body
-		if node.Body != nil && len(node.Body) > 0 {
-			for i, stmt := range node.Body {
-				if stmt != nil {
-					node.Body[i] = fold(node, stmt, i)
-				}
+		for _, stmt := range node.Body {
+			optimizedStmt := fold(root, stmt, index)
+			if optimizedStmt != nil {
+				newElseNode.Body = append(newElseNode.Body, optimizedStmt)
 			}
 		}
-
-		// Optimize the 'else' body, if present
-		if node.Right != nil && node.Right.Type == "ELSE_STATEMENT" {
-			elseNode := node.Right
-			if elseNode.Body != nil && len(elseNode.Body) > 0 {
-				for i, stmt := range elseNode.Body {
-					if stmt != nil {
-						elseNode.Body[i] = fold(elseNode, stmt, i)
-					}
-				}
-			}
-		}
-
-		return node
+		return newElseNode
 	default:
 		// Return node as is if no folding is applied
 		return node

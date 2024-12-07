@@ -4,37 +4,65 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 )
 
 // Represents a simple TAC instruction
 type TacInstruction struct {
-	op     string
-	arg1   string
-	arg2   string
-	result string
+	op     string // Operation type (=, blt, jump, call, etc.)
+	arg1   string // First argument
+	arg2   string // Second argument (if needed)
+	result string // Result or target label
+	label  bool   // Is this a label declaration?
 }
 
 // Parses TAC input lines into TacInstruction structs
 func parseTAC(lines []string) []TacInstruction {
 	var instructions []TacInstruction
 
-	// Regular expression to split the line into tokens, ignoring spaces inside quotes
-	re := regexp.MustCompile(`"(.*?)"|\S+`) // Match anything inside quotes or non-space characters
-
 	for _, line := range lines {
-		// Find all matches using the regex
-		tokens := re.FindAllString(line, -1)
+		tokens := strings.Fields(line)
+		if len(tokens) == 0 {
+			continue
+		}
 
-		// Handle TAC format: var = value or call function arg
-		if len(tokens) == 3 && tokens[1] == "=" {
+		switch {
+		case len(tokens) == 3 && tokens[1] == "=":
 			instructions = append(instructions, TacInstruction{
 				op:     "=",
 				arg1:   tokens[2],
 				result: tokens[0],
 			})
-		} else if tokens[0] == "call" {
+
+		case tokens[0] == "bgt":
+			instructions = append(instructions, TacInstruction{
+				op:     "bgt",
+				arg1:   tokens[1],
+				arg2:   tokens[2],
+				result: tokens[3],
+			})
+
+		case tokens[0] == "blt":
+			instructions = append(instructions, TacInstruction{
+				op:     "blt",
+				arg1:   tokens[1],
+				arg2:   tokens[2],
+				result: tokens[3],
+			})
+
+		case tokens[0] == "jump":
+			instructions = append(instructions, TacInstruction{
+				op:   "jump",
+				arg1: tokens[1],
+			})
+
+		case strings.HasSuffix(tokens[0], ":"):
+			instructions = append(instructions, TacInstruction{
+				op:   "label",
+				arg1: strings.TrimSuffix(tokens[0], ":"),
+			})
+
+		case tokens[0] == "call":
 			instructions = append(instructions, TacInstruction{
 				op:   "call",
 				arg1: tokens[1],
@@ -43,6 +71,80 @@ func parseTAC(lines []string) []TacInstruction {
 		}
 	}
 	return instructions
+}
+
+// Update generateMIPS to handle both blt and bgt:
+func generateMIPS(instructions []TacInstruction) string {
+	var mipsCode strings.Builder
+	declaredVariables := make(map[string]bool)
+
+	mipsCode.WriteString(".data\n")
+	for _, instr := range instructions {
+		if instr.op == "=" {
+			// If not declared, declare once with a default value.
+			if !declaredVariables[instr.result] {
+				declaredVariables[instr.result] = true
+				// Just declare with 0; actual value assigned in text
+				mipsCode.WriteString(fmt.Sprintf("%s: .word 0\n", instr.result))
+			}
+		}
+	}
+
+	mipsCode.WriteString("\n.text\nmain:\n")
+
+	for _, instr := range instructions {
+		switch instr.op {
+		case "=":
+			// All assignments happen here
+			if isNumeric(instr.arg1) {
+				// Immediate assignment
+				mipsCode.WriteString(fmt.Sprintf("    li $t0, %s\n", instr.arg1))
+				mipsCode.WriteString(fmt.Sprintf("    sw $t0, %s\n", instr.result))
+			} else {
+				// Assignment from another variable
+				mipsCode.WriteString(fmt.Sprintf("    lw $t0, %s\n", instr.arg1))
+				mipsCode.WriteString(fmt.Sprintf("    sw $t0, %s\n", instr.result))
+			}
+
+		case "blt":
+			mipsCode.WriteString(fmt.Sprintf("    lw $t0, %s\n", instr.arg1))
+			mipsCode.WriteString(fmt.Sprintf("    lw $t1, %s\n", instr.arg2))
+			mipsCode.WriteString(fmt.Sprintf("    blt $t0, $t1, %s\n", instr.result))
+
+		case "bgt":
+			mipsCode.WriteString(fmt.Sprintf("    lw $t0, %s\n", instr.arg1))
+			mipsCode.WriteString(fmt.Sprintf("    lw $t1, %s\n", instr.arg2))
+			mipsCode.WriteString(fmt.Sprintf("    bgt $t0, $t1, %s\n", instr.result))
+
+		case "jump":
+			mipsCode.WriteString(fmt.Sprintf("    j %s\n", instr.arg1))
+
+		case "label":
+			mipsCode.WriteString(fmt.Sprintf("%s:\n", instr.arg1))
+
+		case "call":
+			if instr.arg1 == "write" {
+				mipsCode.WriteString("    li $v0, 1\n")
+				mipsCode.WriteString(fmt.Sprintf("    lw $a0, %s\n", instr.arg2))
+				mipsCode.WriteString("    syscall\n")
+			}
+		}
+	}
+
+	mipsCode.WriteString("\n    li $v0, 10\n    syscall\n")
+	mipsCode.WriteString("\n# End of program\n")
+
+	return mipsCode.String()
+}
+
+// Helper function to check if a string is numeric (an integer)
+func isNumeric(s string) bool {
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // Extracts the type from a variable name, e.g., "opt_t1_STRING" -> "STRING"
@@ -59,71 +161,6 @@ func determineTypeFromVar(tempVar string) string {
 	return extractTypeFromVar(tempVar)
 }
 
-// Generate MIPS code from parsed TAC instructions
-func generateMIPS(instructions []TacInstruction) string {
-	var mipsCode strings.Builder
-
-	// Start .data section
-	mipsCode.WriteString(".data\n")
-
-	// Store variables in .data section
-	for _, instr := range instructions {
-		// Use the extracted type to determine how to store the variable
-		argType := determineTypeFromVar(instr.result)
-
-		switch argType {
-		case "STRING":
-			mipsCode.WriteString(fmt.Sprintf("%s: .asciiz %s\n", instr.result, instr.arg1))
-		case "CHAR":
-			mipsCode.WriteString(fmt.Sprintf("%s: .byte %s\n", instr.result, instr.arg1))
-		case "BOOL":
-			boolVal := 0
-			if instr.arg1 == "True" {
-				boolVal = 1
-			}
-			mipsCode.WriteString(fmt.Sprintf("%s: .word %d\n", instr.result, boolVal))
-		case "FLOAT":
-			mipsCode.WriteString(fmt.Sprintf("%s: .float %s\n", instr.result, instr.arg1))
-		case "INT":
-			mipsCode.WriteString(fmt.Sprintf("%s: .word %s\n", instr.result, instr.arg1))
-		}
-	}
-
-	// Start .text section
-	mipsCode.WriteString("\n.text\n")
-	mipsCode.WriteString("main:\n")
-
-	// Handle syscalls (call write)
-	for _, instr := range instructions {
-		if instr.op == "call" && instr.arg1 == "write" {
-			// Determine the type of the argument to decide the correct syscall
-			argType := determineTypeFromVar(instr.arg2)
-
-			switch argType {
-			case "STRING":
-				mipsCode.WriteString(fmt.Sprintf("li $v0, 4\nla $a0, %s\nsyscall\n", instr.arg2))
-			case "CHAR":
-				mipsCode.WriteString(fmt.Sprintf("li $v0, 11\nlb $a0, %s\nsyscall\n", instr.arg2))
-			case "BOOL", "INT":
-				mipsCode.WriteString(fmt.Sprintf("li $v0, 1\nlw $a0, %s\nsyscall\n", instr.arg2))
-			case "FLOAT":
-				mipsCode.WriteString(fmt.Sprintf("li $v0, 2\nl.s $f12, %s\nsyscall\n", instr.arg2))
-			default:
-				// Default to integer if the type is unknown
-				mipsCode.WriteString(fmt.Sprintf("li $v0, 1\nlw $a0, %s\nsyscall\n", instr.arg2))
-			}
-		}
-	}
-
-	// Add program termination
-	mipsCode.WriteString("\nli $v0, 10\nsyscall\n") // Exit program
-
-	// End of program
-	mipsCode.WriteString("\n# End of program\n")
-
-	return mipsCode.String()
-}
-
 // Reads lines from a file and returns them as a slice of strings
 func readTac(filename string) ([]string, error) {
 	file, err := os.Open(filename)
@@ -135,7 +172,10 @@ func readTac(filename string) ([]string, error) {
 	var lines []string
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
+		line := scanner.Text()
+		if line != "" { // Skip empty lines
+			lines = append(lines, line)
+		}
 	}
 	return lines, scanner.Err()
 }
