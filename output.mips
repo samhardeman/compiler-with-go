@@ -1,8 +1,8 @@
 .data
 opt_t1_INT: .word 0
 opt_t2_INT: .word 0
-opt_t4_INT: .word 0
-opt_t5_INT: .word 0
+opt_t6_INT: .word 0
+opt_t7_INT: .word 0
 
 .text
 main:
@@ -11,22 +11,22 @@ main:
     li $t0, 6
     sw $t0, opt_t2_INT
 if_start_2:
-    lw $t0, opt_t1_INT
-    lw $t1, opt_t2_INT
-    blt $t0, $t1, true_2
+    lw $t0, opt_t4_INT
+    lw $t1, opt_t5_INT
+    bgt $t0, $t1, true_2
     j false_2
 true_2:
     li $t0, 5
-    sw $t0, opt_t4_INT
+    sw $t0, opt_t6_INT
     li $v0, 1
-    lw $a0, opt_t4_INT
+    lw $a0, opt_t6_INT
     syscall
     j end_if_2
 false_2:
     li $t0, 6
-    sw $t0, opt_t5_INT
+    sw $t0, opt_t7_INT
     li $v0, 1
-    lw $a0, opt_t5_INT
+    lw $a0, opt_t7_INT
     syscall
 end_if_2:
 

@@ -193,8 +193,12 @@ func fold(root *Node, node *Node, index int) *Node {
 			}
 		}
 		return newElseNode
+
+	case "GREATER_THAN", "LESS_THAN":
+		return node
 	default:
 		// Return node as is if no folding is applied
+		fmt.Println(node.Type)
 		return node
 	}
 }

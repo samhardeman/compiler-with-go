@@ -38,8 +38,10 @@ func main() {
 	code := readLines(inputFile)
 	fmt.Println("Parsing...")
 	newRoot := parse(code, &root)
+	printAST(newRoot)
 	fmt.Println("Finished Parsing! Beginning Optimization...")
 	optimizedAST := optimizer(newRoot)
+	printAST(&optimizedAST)
 	fmt.Println("Finished Optimization! Outputting Tac...")
 	optimize_tac(&optimizedAST, "output.tac")
 	fmt.Println("Tac Complete! Compiling to MIPS...")
@@ -99,6 +101,13 @@ func parse(tokens []string, root *Node) *Node {
 		token := tokens[i]
 
 		switch {
+		case token == "/":
+			if tokens[i+1] == "/" {
+				endLineIndex := findEndLine(tokens[i:]) + i
+				i = endLineIndex
+			} else {
+				fmt.Println("Unexpected character '/' at line:", line)
+			}
 		case token == "write":
 			endLineIndex := findEndLine(tokens[i:]) + i
 
@@ -111,7 +120,7 @@ func parse(tokens []string, root *Node) *Node {
 		case token == "func":
 
 			endFunctionDeclIndex := slices.Index(tokens[i:], "{") + i + 1
-			closingBraceIndex := slices.Index(tokens[i:], "}") + i + 1
+			closingBraceIndex := findMatchingBrace(tokens[i:], i) + i + 1
 			funcNode := parseFunc(tokens[i:endFunctionDeclIndex], line)
 
 			isValid := symbolMan(root, funcNode)
@@ -1112,6 +1121,7 @@ func parseIfStatement(tokens []string, lineNumber int, root *Node) (Node, int) {
 	// Find matching '}'
 	ifBlockEnd := findMatchingBrace(tokens, ifBlockStart)
 	if ifBlockEnd == -1 {
+		fmt.Println(tokens)
 		fmt.Printf("Missing closing '}' for if block on line %d\n", lineNumber)
 		os.Exit(3)
 	}
