@@ -119,13 +119,22 @@ func parse(tokens []string, root *Node) *Node {
 
 		case token == "func":
 
-			endFunctionDeclIndex := slices.Index(tokens[i:], "{") + i + 1
-			closingBraceIndex := findMatchingBrace(tokens[i:], i) + i + 1
-			funcNode := parseFunc(tokens[i:endFunctionDeclIndex], line)
+			endFunctionDeclIndex := slices.Index(tokens[i:], "{") + i
+			closingBraceIndex := findMatchingBrace(tokens[endFunctionDeclIndex:], 0) + endFunctionDeclIndex
+			if closingBraceIndex == -1 {
+				fmt.Println("No closing brace found! Line:", line)
+				os.Exit(3)
+			}
+			fmt.Println("func:", tokens[i:endFunctionDeclIndex])
+			funcNode := parseFunc(tokens[i:endFunctionDeclIndex+1], line)
 
 			isValid := symbolMan(root, funcNode)
 
-			parse(tokens[endFunctionDeclIndex:closingBraceIndex-1], funcNode)
+			fmt.Println(i, endFunctionDeclIndex, closingBraceIndex)
+
+			fmt.Println(tokens[closingBraceIndex])
+
+			parse(tokens[endFunctionDeclIndex+1:closingBraceIndex-1], funcNode)
 
 			if !isValid {
 				fmt.Println(funcNode.Value + " has already been declared! Error line: " + strconv.Itoa(line))
@@ -136,7 +145,7 @@ func parse(tokens []string, root *Node) *Node {
 
 			body = append(body, funcNode)
 
-			tokensTraversed := closingBraceIndex - i
+			tokensTraversed := closingBraceIndex - i + 1
 
 			i += tokensTraversed
 		case token == "int" || token == "string" || token == "char" || token == "float" || token == "bool":
@@ -168,6 +177,30 @@ func parse(tokens []string, root *Node) *Node {
 			ifNode, tokensConsumed := parseIfStatement(tokens[i:], line, root)
 			body = append(body, &ifNode)
 			i += tokensConsumed
+
+		case token == "for":
+			endForLoopDeclIndex := slices.Index(tokens[i:], "{") + i
+
+			closingBraceIndex := findMatchingBrace(tokens[endForLoopDeclIndex:], 0) + endForLoopDeclIndex
+			if closingBraceIndex == -1 {
+				fmt.Println("No closing brace found!")
+				os.Exit(3)
+			}
+
+			forLoopNode := parseForLoop(tokens[i:endForLoopDeclIndex], root, line)
+
+			// chops off the opening brace for the body of the for loop and then adds on the new line character to the end
+			// if it isn't there it screws up writing or something, could be an edge case idk
+			fmt.Println(tokens[endForLoopDeclIndex+1 : closingBraceIndex])
+			parse(tokens[endForLoopDeclIndex+1:closingBraceIndex], forLoopNode)
+
+			body = append(body, forLoopNode)
+
+			i = closingBraceIndex + 2
+
+			fmt.Println(i, tokens[i])
+
+			fmt.Println("done with for loop")
 
 		case token == "[":
 			var arrayDecl *Node
@@ -425,6 +458,43 @@ func symbolNode(name string, decltype string, dtype string) *Node {
 		DType: dtype,
 		Value: name,
 	}
+
+	return &newNode
+}
+
+func parseForLoop(tokens []string, root *Node, lineNumber int) *Node {
+	var newNode Node
+	openParen := 0
+
+	newNode.Type = "FOR_LOOP"
+	newNode.DType = "FOR_LOOP"
+
+	// Expect first open parentheses
+	if tokens[1] != "(" {
+		fmt.Println("Expected \"(\" got " + tokens[1] + " on line " + strconv.Itoa(lineNumber))
+		os.Exit(3)
+	} else {
+		openParen++
+	}
+
+	closeParenIndex := slices.Index(tokens, ")")
+
+	if closeParenIndex == -1 {
+		fmt.Println("Expected \")\" got " + tokens[2] + " on line " + strconv.Itoa(lineNumber))
+		os.Exit(3)
+	} else {
+		openParen--
+	}
+
+	firstStatementEndIndex := slices.Index(tokens, ";") + 1
+	secondStatementEndIndex := slices.Index(tokens[firstStatementEndIndex:], ";") + 1
+
+	parse(tokens[2:firstStatementEndIndex], &newNode)
+	condition := parseGeneric(tokens[firstStatementEndIndex:firstStatementEndIndex+secondStatementEndIndex-1], line, &newNode)
+	step := parseGeneric(tokens[firstStatementEndIndex+secondStatementEndIndex:len(tokens)-1], line, &newNode)
+
+	newNode.Params = append(newNode.Params, condition)
+	newNode.Body = append(newNode.Body, step)
 
 	return &newNode
 }
@@ -818,6 +888,8 @@ func operatorTypeComparison(node *Node) {
 }
 
 func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
+
+	fmt.Println("parseGeneric:", tokens)
 
 	var newNode Node
 

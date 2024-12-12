@@ -60,12 +60,16 @@ func optimizer(root *Node) Node {
 			}
 		case "IF_STATEMENT":
 			optimizedIfNode := optimizeIfStatement(root, statement, index)
-			// Debug print to verify if statement structure
-			fmt.Printf("Debug: Optimized if node structure:\n")
-			fmt.Printf("  Has condition: %v\n", optimizedIfNode.Left != nil)
-			fmt.Printf("  Has if body: %v\n", len(optimizedIfNode.Body) > 0)
-			fmt.Printf("  Has else: %v\n", optimizedIfNode.Right != nil)
-			optimizedAST.Body = append(optimizedAST.Body, optimizedIfNode)
+
+			fmt.Println(optimizedIfNode.Left.Value)
+
+			if optimizedIfNode.Left.Value == "FALSE" {
+				optimizedAST.Body = append(optimizedAST.Body, optimizedIfNode.Right.Body...)
+			} else if optimizedIfNode.Left.Value == "TRUE" {
+				optimizedAST.Body = append(optimizedAST.Body, optimizedIfNode.Body...)
+			} else {
+				optimizedAST.Body = append(optimizedAST.Body, optimizedIfNode)
+			}
 
 		}
 	}
@@ -93,6 +97,10 @@ func optimizeIfStatement(root *Node, ifNode *Node, index int) *Node {
 		}
 	}
 
+	if newIfNode.Left.Value == "TRUE" {
+		return newIfNode
+	}
+
 	// Optimize else body if it exists
 	if ifNode.Right != nil {
 		newElseNode := &Node{
@@ -108,8 +116,10 @@ func optimizeIfStatement(root *Node, ifNode *Node, index int) *Node {
 			}
 		}
 
-		// Only set the else node if it has statements
-		if len(newElseNode.Body) > 0 {
+		if newIfNode.Left.Value == "FALSE" {
+			newIfNode.Body = newElseNode.Body
+			return newIfNode
+		} else if len(newElseNode.Body) > 0 {
 			newIfNode.Right = newElseNode
 		}
 	}
@@ -195,12 +205,84 @@ func fold(root *Node, node *Node, index int) *Node {
 		return newElseNode
 
 	case "GREATER_THAN", "LESS_THAN":
-		return node
+		return optimizeComparison(root, node, index)
 	default:
 		// Return node as is if no folding is applied
-		fmt.Println(node.Type)
 		return node
 	}
+}
+
+func optimizeComparison(root *Node, node *Node, index int) *Node {
+	leftNode := node.Left
+	rightNode := node.Right
+
+	boolTrue := Node{
+		Type:  "BOOL",
+		DType: "BOOL",
+		Value: "TRUE",
+	}
+
+	boolFalse := Node{
+		Type:  "BOOL",
+		DType: "BOOL",
+		Value: "FALSE",
+	}
+
+	// Ensure left and right nodes are not nil
+	if leftNode == nil || rightNode == nil {
+		return node
+	}
+
+	// Resolve identifiers to their values, if necessary
+	if leftNode.Type == "IDENTIFIER" {
+		resolvedLeft := fold(root, search(root, index, leftNode.Value), index)
+		if resolvedLeft != nil {
+			leftNode = resolvedLeft
+		}
+	}
+	if rightNode.Type == "IDENTIFIER" {
+		resolvedRight := fold(root, search(root, index, rightNode.Value), index)
+		if resolvedRight != nil {
+			rightNode = resolvedRight
+		}
+	}
+
+	if leftNode.Type == "ARRAY_INDEX" {
+		resolvedLeft := fold(root, leftNode, index)
+		if resolvedLeft != nil {
+			leftNode = resolvedLeft
+		}
+	}
+
+	if rightNode.Type == "ARRAY_INDEX" {
+		resolvedRight := fold(root, rightNode, index)
+		if resolvedRight != nil {
+			rightNode = resolvedRight
+		}
+	}
+
+	if node.Type == "GREATER_THAN" {
+		fmt.Println("GREATER_THAN")
+		fmt.Println(leftNode.Value, rightNode.Value)
+		if leftNode.Value > rightNode.Value {
+			return &boolTrue
+		} else {
+			return &boolFalse
+		}
+	}
+
+	if node.Type == "LESS_THAN" {
+		fmt.Println("LESS_THAN")
+		fmt.Println(leftNode.Value, rightNode.Value)
+		if leftNode.Value < rightNode.Value {
+			return &boolTrue
+		} else {
+			return &boolFalse
+		}
+	}
+
+	return node
+
 }
 
 func handleArithmetic(root *Node, node *Node, index int) *Node {
@@ -358,7 +440,15 @@ func foldFunction(funcNode *Node, params []*Node, index int) *Node {
 	for funcIndex, statement := range funcNode.Body {
 		result := fold(funcNode, statement, funcIndex) // Pass `nil` if root isn't needed
 		if result != nil {
-			foldedFunction.Body = append(foldedFunction.Body, result)
+			if result.Type == "IF_STATEMENT" {
+				if result.Left.Value == "FALSE" || result.Left.Value == "TRUE" {
+					foldedFunction.Body = append(foldedFunction.Body, result.Body...)
+				} else {
+					foldedFunction.Body = append(foldedFunction.Body, result)
+				}
+			} else {
+				foldedFunction.Body = append(foldedFunction.Body, result)
+			}
 		}
 	}
 	return foldedFunction.Body[len(foldedFunction.Body)-1]
