@@ -1,0 +1,187 @@
+// Global variables
+int globalInt     // Global integer
+char globalChar   // Global character
+float globalFloat // Global floating-point variable
+int boolFlag      // Boolean (0 or 1)
+
+func printInt(int intvalue) {
+    write(intvalue)
+}
+
+func printChar(char value) {
+    write(value)
+}
+
+// Function to print a floating-point number
+func printFloat(float value) {
+    write(value)
+}
+
+// Function to compute the sum of two integers with additional logic
+func computeSum(int a, int b) int {
+    int sum
+    int doubleSum
+    int temp
+
+    sum = a + b 
+    temp = sum + 5 
+    doubleSum = temp * 2
+    globalFloat = globalFloat + sum
+
+    if (doubleSum > 50) {
+        globalInt = globalInt + 10
+        printChar('H')
+    } else {
+        globalInt = globalInt - 5
+        printChar('L')
+    }
+
+    printInt(doubleSum)
+    return doubleSum
+}
+
+// Function to display results with additional logic
+func displayResult(int result) {
+    int localCopy
+
+    // Copy result to local variable and perform operations
+    localCopy = result
+    localCopy = localCopy + 1
+
+    if (localCopy % 2 == 0) {
+        globalChar = 'E'
+    } else {
+        globalChar = 'O'
+    }
+
+    // Print global character
+    printChar(globalChar)
+
+    // Assign localCopy to global variable
+    globalInt = localCopy
+
+    // Mock display operation
+    localCopy = localCopy * 3
+    printInt(localCopy)
+}
+
+// Function to multiply two integers with added complexity
+func multiply(int x, int y) int {
+    int product
+    int square
+    int tempResult
+
+    product = x * y
+    square = x * x
+    tempResult = product + square
+
+    if (tempResult > 50) {
+        globalFloat = globalFloat / 2.0
+        printFloat(globalFloat)
+    }
+
+    printInt(tempResult)
+    return tempResult
+}
+
+// Function to calculate the factorial of a number
+int factorial(int n) {
+    int result
+
+    if (n <= 1) {
+        printInt(1)  // Print base case result
+        return 1
+    } else {
+        result = n * factorial(n - 1)  // Recursive call
+        printInt(result) // Print intermediate factorial value
+        return result
+    }
+}
+
+// Function to check if a number is prime
+int isPrime(int n) {
+    int i
+
+    if (n <= 1) {
+        return 0  // Not prime
+    }
+
+    i = 2
+    while (i < n) {
+        if (n % i == 0) {
+            printChar('N')  // Print non-prime indicator
+            return 0  // Divisible, not prime
+        }
+        i = i + 1
+    }
+
+    printChar('P')  // Print prime indicator
+    return 1  // Prime
+}
+
+// Main function (moved to the end)
+int localInt     // Local integer
+float localFloat // Local float
+int i            // Loop counter
+int result       // Result variable
+int temp         // Temporary variable for operations
+
+// Variable initialization
+localInt = 15
+localFloat = 3.7
+globalInt = 20
+globalChar = 'C'
+
+// Print initial global values
+printInt(globalInt)
+printChar(globalChar)
+printFloat(globalFloat)
+
+// Complex arithmetic expression
+result = (localInt * 2 + 3) / (5 - 2) + globalInt
+
+// If statement
+if (result > 10) {
+    temp = result * 2  // Additional computation
+    displayResult(temp)
+} else {
+    temp = result - 1
+    displayResult(temp + 3)
+}
+
+// While loop with nested logic
+i = 0
+while (i < 10) {
+    result = multiply(i, i + 1)  // Function call inside loop
+
+    // If inside while
+    if (result > 20) {
+        globalInt = result  // Update global variable
+        break  // Exit loop
+    } else {
+        globalInt = globalInt + 1  // Increment global variable
+    }
+
+    printInt(i) // Print loop counter
+    i = i + 1
+}
+
+// Call factorial function
+result = factorial(5)
+printInt(result) // Print final factorial result
+
+// Check for primality
+if (isPrime(result)) {
+    displayResult(result)
+} else {
+    displayResult(result - 10)
+}
+
+// Additional redundant computation for optimization analysis
+temp = 5 * 4 // Constant folding opportunity
+result = temp + 10
+printInt(result) // Print final redundant computation
+
+// Final function call
+result = computeSum(localInt, 20)
+displayResult(result)

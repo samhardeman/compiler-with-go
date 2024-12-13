@@ -1,26 +1,13 @@
-string word1 = "\nhello"
-string word2 = " world"
-char char1 = 'a'
-int x = 39
-int a = 72
-float pi = 3.14
+int a = 5
+int b = 6
+global int c = 7
 
-func multiplyBy2(int d) int {
-    int c = d * 2
-    return c
+func addC(int x) {
+    int d = c + x
+    write(d)
 }
 
-func printVal(string word) {
-    string baller = word + " yeah"
-    write(baller)
+if (b > a) {
+    a = a + b
+    addC(a)
 }
-
-string together = word1 + word2
-
-printVal(together)
-
-int b 
-b = multiplyBy2(39)
-
-write(b)
-write(together)

@@ -22,6 +22,7 @@ type Node struct {
 	Body     []*Node
 	Left     *Node
 	Right    *Node
+	Scope    string
 }
 
 type Symbol struct {
@@ -108,6 +109,7 @@ func parse(tokens []string, root *Node) *Node {
 			} else {
 				fmt.Println("Unexpected character '/' at line:", line)
 			}
+
 		case token == "write":
 			endLineIndex := findEndLine(tokens[i:]) + i
 
@@ -125,43 +127,75 @@ func parse(tokens []string, root *Node) *Node {
 				fmt.Println("No closing brace found! Line:", line)
 				os.Exit(3)
 			}
-			fmt.Println("func:", tokens[i:endFunctionDeclIndex])
+
 			funcNode := parseFunc(tokens[i:endFunctionDeclIndex+1], line)
+
+			funcNode.Declared = append(funcNode.Declared, passGlobals(root)...)
 
 			isValid := symbolMan(root, funcNode)
 
-			fmt.Println(i, endFunctionDeclIndex, closingBraceIndex)
+			fmt.Println(isValid)
 
-			fmt.Println(tokens[closingBraceIndex])
-
-			parse(tokens[endFunctionDeclIndex+1:closingBraceIndex-1], funcNode)
+			fmt.Println(len(funcNode.Declared))
+			parse(tokens[endFunctionDeclIndex+1:closingBraceIndex], funcNode)
 
 			if !isValid {
 				fmt.Println(funcNode.Value + " has already been declared! Error line: " + strconv.Itoa(line))
 				os.Exit(3)
 			}
 
-			root.Declared = append(root.Declared, symbolNode(funcNode.Value, funcNode.Type, funcNode.DType))
+			root.Declared = append(root.Declared, symbolNode(funcNode.Value, funcNode.Type, funcNode.DType, "LOCAL"))
 
 			body = append(body, funcNode)
 
 			tokensTraversed := closingBraceIndex - i + 1
 
 			i += tokensTraversed
+
 		case token == "int" || token == "string" || token == "char" || token == "float" || token == "bool":
 
 			endLineIndex := findEndLine(tokens[i:]) + i
 			declLine := tokens[i:endLineIndex]
 			declNode := parseDecl(declLine, line)
 
+			// check if valid
 			isValid := symbolMan(root, declNode)
-
 			if !isValid {
 				fmt.Println(declNode.Value + " has already been declared!")
 				os.Exit(3)
 			}
 
-			root.Declared = append(root.Declared, symbolNode(declNode.Value, declNode.Type, declNode.DType))
+			declNode.Scope = "LOCAL"
+			root.Declared = append(root.Declared, symbolNode(declNode.Value, declNode.Type, declNode.DType, declNode.Scope))
+
+			if len(declLine) > 2 {
+				if declLine[2] == "=" {
+					newNode := parseGeneric(declLine[1:], line, root)
+					body = append(body, newNode)
+				}
+			}
+
+			i = endLineIndex
+
+		case token == "global":
+			endLineIndex := findEndLine(tokens[i:]) + i
+
+			// skip the global token, and parse like a regular data type
+			// there really should be a check here to make sure after global is a int/char/string/etc
+			i++
+			declLine := tokens[i:endLineIndex]
+			declNode := parseDecl(declLine, line)
+
+			// check if valid
+			isValid := symbolMan(root, declNode)
+			if !isValid {
+				fmt.Println(declNode.Value + " has already been declared!")
+				os.Exit(3)
+			}
+
+			declNode.Scope = "GLOBAL"
+
+			root.Declared = append(root.Declared, symbolNode(declNode.Value, declNode.Type, declNode.DType, declNode.Scope))
 
 			if len(declLine) > 2 {
 				if declLine[2] == "=" {
@@ -189,18 +223,47 @@ func parse(tokens []string, root *Node) *Node {
 
 			forLoopNode := parseForLoop(tokens[i:endForLoopDeclIndex], root, line)
 
-			// chops off the opening brace for the body of the for loop and then adds on the new line character to the end
-			// if it isn't there it screws up writing or something, could be an edge case idk
-			fmt.Println(tokens[endForLoopDeclIndex+1 : closingBraceIndex])
+			initNode := forLoopNode.Body[0]
+
+			// what are you doing, stepnode?
+			stepNode := forLoopNode.Body[1]
+
 			parse(tokens[endForLoopDeclIndex+1:closingBraceIndex], forLoopNode)
+
+			forLoopCore := forLoopIf(forLoopNode)
+
+			forLoopNode.Body = nil
+
+			forLoopNode.Body = append(forLoopNode.Body, initNode)
+			forLoopNode.Body = append(forLoopNode.Body, forLoopCore)
+			forLoopNode.Body = append(forLoopNode.Body, stepNode)
 
 			body = append(body, forLoopNode)
 
 			i = closingBraceIndex + 2
 
-			fmt.Println(i, tokens[i])
+		case token == "while":
+			endWhileDeclIndex := slices.Index(tokens[i:], "{") + i
 
-			fmt.Println("done with for loop")
+			closingBraceIndex := findMatchingBrace(tokens[endWhileDeclIndex:], 0) + endWhileDeclIndex
+			if closingBraceIndex == -1 {
+				fmt.Println("No closing brace found!")
+				os.Exit(3)
+			}
+
+			whileLoop := parseWhile(tokens[i:endWhileDeclIndex], root, line)
+
+			parse(tokens[endWhileDeclIndex+1:closingBraceIndex], whileLoop)
+
+			whileLoopCore := forLoopIf(whileLoop)
+
+			whileLoop.Body = nil
+
+			whileLoop.Body = append(whileLoop.Body, whileLoopCore)
+
+			body = append(body, whileLoop)
+
+			i = closingBraceIndex + 2
 
 		case token == "[":
 			var arrayDecl *Node
@@ -219,7 +282,7 @@ func parse(tokens []string, root *Node) *Node {
 				os.Exit(3)
 			}
 
-			root.Declared = append(root.Declared, symbolNode(arrayDecl.Value, arrayDecl.Type, arrayDecl.DType))
+			root.Declared = append(root.Declared, symbolNode(arrayDecl.Value, arrayDecl.Type, arrayDecl.DType, "LOCAL"))
 
 			if len(declLine) > 3 {
 
@@ -452,11 +515,12 @@ func returnType(root *Node, searchedNode *Node) string {
 
 }
 
-func symbolNode(name string, decltype string, dtype string) *Node {
+func symbolNode(name string, decltype string, dtype string, scope string) *Node {
 	newNode := Node{
 		Type:  decltype,
 		DType: dtype,
 		Value: name,
+		Scope: scope,
 	}
 
 	return &newNode
@@ -468,6 +532,10 @@ func parseForLoop(tokens []string, root *Node, lineNumber int) *Node {
 
 	newNode.Type = "FOR_LOOP"
 	newNode.DType = "FOR_LOOP"
+	newNode.Value = "for"
+
+	// append declared variables to the for loop so that it has access to them
+	newNode.Declared = append(newNode.Declared, root.Declared...)
 
 	// Expect first open parentheses
 	if tokens[1] != "(" {
@@ -497,6 +565,54 @@ func parseForLoop(tokens []string, root *Node, lineNumber int) *Node {
 	newNode.Body = append(newNode.Body, step)
 
 	return &newNode
+}
+
+func parseWhile(tokens []string, root *Node, lineNumber int) *Node {
+	var newNode Node
+	openParen := 0
+
+	newNode.Type = "WHILE_LOOP"
+	newNode.DType = "WHILE_LOOP"
+	newNode.Value = "while"
+
+	// append declared variables to the for loop so that it has access to them
+	newNode.Declared = append(newNode.Declared, root.Declared...)
+
+	// Expect first open parentheses
+	if tokens[1] != "(" {
+		fmt.Println("Expected \"(\" got " + tokens[1] + " on line " + strconv.Itoa(lineNumber))
+		os.Exit(3)
+	} else {
+		openParen++
+	}
+
+	closeParenIndex := slices.Index(tokens, ")")
+
+	if closeParenIndex == -1 {
+		fmt.Println("Expected \")\" got " + tokens[2] + " on line " + strconv.Itoa(lineNumber))
+		os.Exit(3)
+	} else {
+		openParen--
+	}
+
+	condition := parseGeneric(tokens[2:closeParenIndex], line, &newNode)
+
+	newNode.Params = append(newNode.Params, condition)
+
+	return &newNode
+}
+
+func forLoopIf(node *Node) *Node {
+	ifNode := Node{
+		Type:  "IF_STATEMENT",
+		Value: "if",
+		Body:  []*Node{},
+	}
+
+	ifNode.Body = node.Body
+	ifNode.Left = node.Params[0]
+
+	return &ifNode
 }
 
 func parseDecl(tokens []string, lineNumber int) *Node {
@@ -634,6 +750,7 @@ func parseArray(tokens []string, lineNumber int, root *Node) Node {
 }
 
 func parseWrite(tokens []string, lineNumber int, root *Node) Node {
+	fmt.Println(tokens)
 	newNode := Node{
 		Type:  "FUNCTION_CALL",
 		Value: tokens[0], // The function name (e.g., 'write')
@@ -1249,4 +1366,14 @@ func findMatchingBrace(tokens []string, openIndex int) int {
 		}
 	}
 	return -1
+}
+
+func passGlobals(root *Node) []*Node {
+	var globals []*Node
+	for _, node := range root.Declared {
+		if node.Scope == "GLOBAL" {
+			globals = append(globals, node)
+		}
+	}
+	return globals
 }
