@@ -61,9 +61,7 @@ func optimizer(root *Node) Node {
 		case "IF_STATEMENT":
 			optimizedIfNode := optimizeIfStatement(root, statement, index)
 
-			if optimizedIfNode.Left.Value == "FALSE" {
-				optimizedAST.Body = append(optimizedAST.Body, optimizedIfNode.Right.Body...)
-			} else if optimizedIfNode.Left.Value == "TRUE" {
+			if optimizedIfNode.Left.Value == "FALSE" || optimizedIfNode.Left.Value == "TRUE" {
 				optimizedAST.Body = append(optimizedAST.Body, optimizedIfNode.Body...)
 			} else {
 				optimizedAST.Body = append(optimizedAST.Body, optimizedIfNode)
@@ -96,7 +94,10 @@ func optimizeIfStatement(root *Node, ifNode *Node, index int) *Node {
 
 	// Optimize if body
 	for _, stmt := range ifNode.Body {
-		optimizedStmt := fold(root, stmt, index)
+		optimizedStmt := fold(newIfNode, stmt, len(newIfNode.Body))
+		if optimizedStmt == nil {
+			optimizedStmt = fold(root, stmt, index)
+		}
 		if optimizedStmt != nil {
 			newIfNode.Body = append(newIfNode.Body, optimizedStmt)
 		}
@@ -108,6 +109,7 @@ func optimizeIfStatement(root *Node, ifNode *Node, index int) *Node {
 
 	// Optimize else body if it exists
 	if ifNode.Right != nil {
+		fmt.Println("else statements")
 		newElseNode := &Node{
 			Type:  "ELSE_STATEMENT",
 			Value: "else",
@@ -115,7 +117,10 @@ func optimizeIfStatement(root *Node, ifNode *Node, index int) *Node {
 		}
 
 		for _, stmt := range ifNode.Right.Body {
-			optimizedStmt := fold(root, stmt, index)
+			optimizedStmt := fold(newElseNode, stmt, len(newElseNode.Body))
+			if optimizedStmt == nil {
+				optimizedStmt = fold(root, stmt, index)
+			}
 			if optimizedStmt != nil {
 				newElseNode.Body = append(newElseNode.Body, optimizedStmt)
 			}
@@ -129,6 +134,8 @@ func optimizeIfStatement(root *Node, ifNode *Node, index int) *Node {
 		}
 	}
 
+	fmt.Println(newIfNode.Right.Value)
+
 	return newIfNode
 }
 
@@ -136,7 +143,6 @@ func fold(root *Node, node *Node, index int) *Node {
 	if node == nil {
 		return nil
 	}
-
 	switch node.Type {
 	case "ADD", "SUB", "MULT", "DIV":
 		return handleArithmetic(root, node, index)
@@ -154,6 +160,7 @@ func fold(root *Node, node *Node, index int) *Node {
 			writeNode := node
 			for paramIndex, param := range writeNode.Params {
 				writeNode.Params[paramIndex] = fold(root, param, index)
+				fmt.Println(writeNode.Params[paramIndex].Value)
 			}
 			return writeNode
 		} else {
@@ -263,6 +270,8 @@ func optimizeComparison(root *Node, node *Node, index int) *Node {
 		}
 	}
 
+	fmt.Println(leftNode.Value, rightNode.Value)
+
 	if leftNode.Type == "ARRAY_INDEX" {
 		resolvedLeft := fold(root, leftNode, index)
 		if resolvedLeft != nil {
@@ -278,9 +287,7 @@ func optimizeComparison(root *Node, node *Node, index int) *Node {
 	}
 
 	if node.Type == "GREATER_THAN" {
-		fmt.Println("GREATER_THAN")
-		fmt.Println(leftNode.Value, rightNode.Value)
-		if leftNode.Value > rightNode.Value {
+		if atoi(leftNode.Value) > atoi(rightNode.Value) {
 			return &boolTrue
 		} else {
 			return &boolFalse
@@ -288,9 +295,7 @@ func optimizeComparison(root *Node, node *Node, index int) *Node {
 	}
 
 	if node.Type == "LESS_THAN" {
-		fmt.Println("LESS_THAN")
-		fmt.Println(leftNode.Value, rightNode.Value)
-		if leftNode.Value < rightNode.Value {
+		if atoi(leftNode.Value) < atoi(rightNode.Value) {
 			return &boolTrue
 		} else {
 			return &boolFalse

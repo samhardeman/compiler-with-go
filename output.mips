@@ -2,6 +2,11 @@
 opt_t1_INT: .word 0
 opt_t2_INT: .word 0
 opt_t3_INT: .word 0
+opt_t4_INT: .word 0
+opt_t5_INT: .word 0
+opt_t6_INT: .word 0
+opt_t7_INT: .word 0
+opt_t8_INT: .word 0
 
 .text
 main:
@@ -13,8 +18,27 @@ main:
     sw $t0, opt_t3_INT
     li $t0, 11
     sw $t0, opt_t1_INT
+    li $t0, 13
+    sw $t0, opt_t4_INT
+    li $t0, 11
+    sw $t0, opt_t5_INT
     li $v0, 1
-    lw $a0, opt_t4_FLOAT
+    lw $a0, opt_t5_INT
+    syscall
+    li $t0, 6
+    sw $t0, opt_t6_INT
+    li $v0, 1
+    lw $a0, opt_t6_INT
+    syscall
+    li $t0, 13
+    sw $t0, opt_t7_INT
+    li $v0, 1
+    lw $a0, opt_t7_INT
+    syscall
+    li $t0, 1
+    sw $t0, opt_t8_INT
+    li $v0, 1
+    lw $a0, opt_t8_INT
     syscall
 
     li $v0, 10

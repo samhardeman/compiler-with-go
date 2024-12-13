@@ -2,12 +2,15 @@ int a = 5
 int b = 6
 global int c = 7
 
-func addC(int x) {
-    int d = c + x
-    write(d)
-}
+a = a + b
+int d = a + 2
+write(a)
+write(b)
+write(d)
 
 if (b > a) {
-    a = a + b
-    addC(a)
+    a = 2
+    write(a)
+} else {
+    write(1)
 }
