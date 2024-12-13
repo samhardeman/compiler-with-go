@@ -68,12 +68,21 @@ func optimizer(root *Node) Node {
 			}
 
 		case "FOR_LOOP":
-			optimizedForLoop := optimizeForLoop(statement)
+			unrolledForLoop := optimizeForLoop(root, statement, index)
+			var optimizedForLoop Node
+			for _, stmt := range unrolledForLoop.Body {
+				optimizedStmt := fold(&optimizedForLoop, stmt, len(optimizedForLoop.Body))
+				if optimizedStmt == nil { // it is never this
+					optimizedStmt = fold(root, stmt, index)
+				}
+				if optimizedStmt != nil {
+					optimizedForLoop.Body = append(optimizedForLoop.Body, optimizedStmt)
+				}
+			}
 			optimizedAST.Body = append(optimizedAST.Body, optimizedForLoop.Body...)
 
 		case "WHILE_LOOP":
-			optimizedWhileLoop := optimizeWhileLoop(statement)
-			optimizedAST.Body = append(optimizedAST.Body, optimizedWhileLoop.Body...)
+			optimizedAST.Body = append(optimizedAST.Body, statement)
 		}
 	}
 
@@ -109,7 +118,6 @@ func optimizeIfStatement(root *Node, ifNode *Node, index int) *Node {
 
 	// Optimize else body if it exists
 	if ifNode.Right != nil {
-		fmt.Println("else statements")
 		newElseNode := &Node{
 			Type:  "ELSE_STATEMENT",
 			Value: "else",
@@ -134,8 +142,6 @@ func optimizeIfStatement(root *Node, ifNode *Node, index int) *Node {
 		}
 	}
 
-	fmt.Println(newIfNode.Right.Value)
-
 	return newIfNode
 }
 
@@ -143,6 +149,8 @@ func fold(root *Node, node *Node, index int) *Node {
 	if node == nil {
 		return nil
 	}
+
+	fmt.Println("node.Value = ", node.Value)
 	switch node.Type {
 	case "ADD", "SUB", "MULT", "DIV":
 		return handleArithmetic(root, node, index)
@@ -160,7 +168,6 @@ func fold(root *Node, node *Node, index int) *Node {
 			writeNode := node
 			for paramIndex, param := range writeNode.Params {
 				writeNode.Params[paramIndex] = fold(root, param, index)
-				fmt.Println(writeNode.Params[paramIndex].Value)
 			}
 			return writeNode
 		} else {
@@ -219,15 +226,9 @@ func fold(root *Node, node *Node, index int) *Node {
 	case "GREATER_THAN", "LESS_THAN":
 		return optimizeComparison(root, node, index)
 
-	// will not output straight to the body will need some reworking if this is supposed to be in a function which is everything
-	// frick
 	case "FOR_LOOP":
-		return optimizeForLoop(node)
 
-	// will not output straight to the body will need some reworking if this is supposed to be in a function which is everything
-	// frick
-	case "WHILE_LOOP":
-		return optimizeWhileLoop(node)
+		return optimizeForLoop(root, node, index)
 
 	default:
 		// Return node as is if no folding is applied
@@ -269,8 +270,6 @@ func optimizeComparison(root *Node, node *Node, index int) *Node {
 			rightNode = resolvedRight
 		}
 	}
-
-	fmt.Println(leftNode.Value, rightNode.Value)
 
 	if leftNode.Type == "ARRAY_INDEX" {
 		resolvedLeft := fold(root, leftNode, index)
@@ -476,7 +475,7 @@ func foldFunction(funcNode *Node, params []*Node, index int) *Node {
 }
 
 // optimizeForLoop optimizes the for loop structure based on the provided AST.
-func optimizeForLoop(forLoopNode *Node) *Node {
+func optimizeForLoop(root *Node, forLoopNode *Node, index int) *Node {
 	if forLoopNode.Type != "FOR_LOOP" {
 		panic("Node is not a for loop")
 	}
@@ -491,13 +490,8 @@ func optimizeForLoop(forLoopNode *Node) *Node {
 		panic("Second body node is not an if statement")
 	}
 
-	// Extract the write function from the if statement
-	writeCall := ifStmt.Body[0]
-	if writeCall.Type != "FUNCTION_CALL" || writeCall.Value != "write" {
-		panic("Expected a write function call in the if statement")
-	}
-
 	// Analyze the initialization, condition, and updation
+	//loopVar := init.Left.Value         // e.g., "i"
 	start := atoi(init.Right.Value)    // e.g., 0
 	end := atoi(condition.Right.Value) // e.g., 10
 	step := 1                          // Assume step is always +1 for simplicity
@@ -506,85 +500,58 @@ func optimizeForLoop(forLoopNode *Node) *Node {
 	}
 
 	// Generate the optimized body by simulating the loop execution
-	optimizedBody := []*Node{}
+	unrolledLoop := Node{}
+	unrolledLoop.Body = append(unrolledLoop.Body, init)
 	for i := start; i < end; i += step {
-		optimizedBody = append(optimizedBody, &Node{
-			Type:  "FUNCTION_CALL",
-			Value: "write",
-			Params: []*Node{
-				{
-					Type:  "INT",
-					DType: "INT",
-					Value: fmt.Sprintf("%d", i),
-				},
-			},
-		})
+		for _, stmt := range forLoopNode.Body[1:] {
+			// Fold each statement within the loop body
+			if stmt.Type == "IF_STATEMENT" {
+				unrolledLoop.Body = append(unrolledLoop.Body, stmt.Body...)
+			} else {
+				unrolledLoop.Body = append(unrolledLoop.Body, stmt)
+			}
+		}
 	}
 
-	// Return a new for loop node with the optimized body
-	return &Node{
-		Type:  "FOR_LOOP",
-		DType: "FOR_LOOP",
-		Value: "for",
-		Body:  optimizedBody,
-	}
+	printAST(&unrolledLoop)
+	return &unrolledLoop
 }
 
-// optimizeWhileLoop optimizes the while loop structure based on the provided AST.
-func optimizeWhileLoop(whileLoopNode *Node) *Node {
-	if whileLoopNode.Type != "WHILE_LOOP" {
-		panic("Node is not a while loop")
+// replaceLoopVar replaces occurrences of the loop variable in a node with a given value.
+func replaceLoopVar(node *Node, loopVar string, value string) *Node {
+	if node == nil {
+		return nil
 	}
 
-	// Extract key components from the while loop
-	condition := whileLoopNode.Params[0] // Condition node (e.g., b < 7)
-	ifStmt := whileLoopNode.Body[0]      // If statement node
-	if ifStmt.Type != "IF_STATEMENT" {
-		panic("Body node is not an if statement")
+	// Clone the node
+	newNode := &Node{
+		Type:   node.Type,
+		DType:  node.DType,
+		Value:  node.Value,
+		Params: []*Node{},
+		Left:   replaceLoopVar(node.Left, loopVar, value),
+		Right:  replaceLoopVar(node.Right, loopVar, value),
+		Body:   []*Node{},
 	}
 
-	// Extract the write function and update operation from the if statement
-	writeCall := ifStmt.Body[0]
-	if writeCall.Type != "FUNCTION_CALL" || writeCall.Value != "write" {
-		panic("Expected a write function call in the if statement")
+	// Replace loop variable if found
+	if node.Type == "IDENTIFIER" && node.Value == loopVar {
+		newNode = &Node{
+			Type:  "INT",
+			DType: "INT",
+			Value: value,
+		}
 	}
 
-	updateOp := ifStmt.Body[1]
-	if updateOp.Type != "ASSIGN" {
-		panic("Expected an assignment operation in the if statement")
+	// Recursively process parameters and body
+	for _, param := range node.Params {
+		newNode.Params = append(newNode.Params, replaceLoopVar(param, loopVar, value))
+	}
+	for _, bodyNode := range node.Body {
+		newNode.Body = append(newNode.Body, replaceLoopVar(bodyNode, loopVar, value))
 	}
 
-	// Analyze the condition and updation
-	start := atoi(updateOp.Left.Value) // Initial value is assumed to be set before the loop
-	end := atoi(condition.Right.Value) // e.g., 7
-	step := 1                          // Assume step is always +1 for simplicity
-	if updateOp.Right.Type == "ADD" {
-		step = atoi(updateOp.Right.Right.Value)
-	}
-
-	// Generate the optimized body by simulating the loop execution
-	optimizedBody := []*Node{}
-	for i := start; i < end; i += step {
-		optimizedBody = append(optimizedBody, &Node{
-			Type:  "FUNCTION_CALL",
-			Value: "write",
-			Params: []*Node{
-				{
-					Type:  "INT",
-					DType: "INT",
-					Value: fmt.Sprintf("%d", i),
-				},
-			},
-		})
-	}
-
-	// Return a new while loop node with the optimized body
-	return &Node{
-		Type:  "WHILE_LOOP",
-		DType: "WHILE_LOOP",
-		Value: "while",
-		Body:  optimizedBody,
-	}
+	return newNode
 }
 
 // atoi is a helper function to convert string to integer.
