@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Node struct {
@@ -33,21 +34,36 @@ type Symbol struct {
 var line int
 
 func main() {
+	startTime := time.Now()
+
 	line++
 	root := Node{}
 	var inputFile string = getFlags()
 	code := readLines(inputFile)
+
+	startParsing := time.Now()
 	fmt.Println("Parsing...")
 	newRoot := parse(code, &root)
-	printAST(newRoot)
+	fmt.Printf("Parsing took %v\n", time.Since(startParsing))
+
+	startOptimization := time.Now()
 	fmt.Println("Finished Parsing! Beginning Optimization...")
 	optimizedAST := optimizer(newRoot)
-	printAST(&optimizedAST)
+	fmt.Printf("Optimization took %v\n", time.Since(startOptimization))
+
+	startTacGeneration := time.Now()
 	fmt.Println("Finished Optimization! Outputting Tac...")
 	optimize_tac(&optimizedAST, "output.tac")
-	fmt.Println("Tac Complete! Compiling to MIPS...")
+	fmt.Printf("TAC Generation took %v\n", time.Since(startTacGeneration))
+
+	startMipsCompilation := time.Now()
+	fmt.Println("MIPS Compilation...")
 	tac2Mips("output.tac")
-	fmt.Println("Finished! 【=◈ ︿◈ =】")
+	fmt.Printf("MIPS Compilation took %v\n", time.Since(startMipsCompilation))
+
+	totalTime := time.Since(startTime)
+
+	fmt.Println("Finished! 【=◈ ︿◈ =】Total:", totalTime)
 }
 
 func getFlags() string {
