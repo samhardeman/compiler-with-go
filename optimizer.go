@@ -72,7 +72,7 @@ func optimizer(root *Node) Node {
 			var optimizedForLoop Node
 			for _, stmt := range unrolledForLoop.Body {
 				optimizedStmt := fold(&optimizedForLoop, stmt, len(optimizedForLoop.Body))
-				if optimizedStmt == nil { // it is never this
+				if optimizedStmt == nil {
 					optimizedStmt = fold(root, stmt, index)
 				}
 				if optimizedStmt != nil {
@@ -173,6 +173,10 @@ func fold(root *Node, node *Node, index int) *Node {
 		} else {
 			funcNode := searchForFunctions(root, index, node.Value)
 			params := node.Params
+
+			if funcNode == nil {
+				return nil
+			}
 
 			if len(funcNode.Params) != len(params) {
 				fmt.Println("Optimizer: more parameters than accepted!")
@@ -328,13 +332,13 @@ func handleArithmetic(root *Node, node *Node, index int) *Node {
 		}
 	}
 
+	// Resolve ARRAY_INDEX nodes
 	if leftNode.Type == "ARRAY_INDEX" {
 		resolvedLeft := fold(root, leftNode, index)
 		if resolvedLeft != nil {
 			leftNode = resolvedLeft
 		}
 	}
-
 	if rightNode.Type == "ARRAY_INDEX" {
 		resolvedRight := fold(root, rightNode, index)
 		if resolvedRight != nil {
@@ -342,7 +346,7 @@ func handleArithmetic(root *Node, node *Node, index int) *Node {
 		}
 	}
 
-	// Resolve identifiers to their values, if necessary
+	// Resolve subtrees that are arithmetic expressions
 	if leftNode.Type == "ADD" || leftNode.Type == "SUB" || leftNode.Type == "MULT" || leftNode.Type == "DIV" {
 		leftNode = fold(root, leftNode, index)
 	}
@@ -350,6 +354,7 @@ func handleArithmetic(root *Node, node *Node, index int) *Node {
 		rightNode = fold(root, rightNode, index)
 	}
 
+	// Perform arithmetic operation if types are compatible
 	if (leftNode.DType == "INT" || leftNode.DType == "FLOAT") && (rightNode.DType == "INT" || rightNode.DType == "FLOAT") {
 		var leftVal, rightVal float64
 		var err error
@@ -378,7 +383,7 @@ func handleArithmetic(root *Node, node *Node, index int) *Node {
 			}
 		}
 
-		// Perform operation based on node type
+		// Perform the operation based on the node type
 		switch node.Type {
 		case "ADD":
 			node.Value = strconv.FormatFloat(leftVal+rightVal, 'f', -1, 64)
@@ -397,12 +402,24 @@ func handleArithmetic(root *Node, node *Node, index int) *Node {
 			return node
 		}
 
-		// Set the result type and cleanup nodes
-		node.Type = leftNode.Type
-		node.DType = "FLOAT" // Result is float if any operand was float
+		// Determine the resulting type
+		if leftNode.DType == "FLOAT" || rightNode.DType == "FLOAT" {
+			node.DType = "FLOAT"
+		} else {
+			// Check if the result can remain an integer
+			intResult, err := strconv.Atoi(node.Value)
+			if err == nil && strconv.FormatInt(int64(intResult), 10) == node.Value {
+				node.DType = "INT"
+				node.Value = strconv.Itoa(intResult)
+			} else {
+				node.DType = "FLOAT"
+			}
+		}
+
+		// Cleanup the current node
 		node.Left = nil
 		node.Right = nil
-
+		node.Type = "INT"
 	}
 
 	// After resolution, check if both nodes are numbers
@@ -474,27 +491,22 @@ func foldFunction(funcNode *Node, params []*Node, index int) *Node {
 	return foldedFunction.Body[len(foldedFunction.Body)-1]
 }
 
-// optimizeForLoop optimizes the for loop structure based on the provided AST.
 func optimizeForLoop(root *Node, forLoopNode *Node, index int) *Node {
 	if forLoopNode.Type != "FOR_LOOP" {
 		panic("Node is not a for loop")
 	}
 
 	// Extract key components from the for loop
-	condition := forLoopNode.Params[0]                    // Condition node (e.g., i < 10)
-	init := forLoopNode.Body[0]                           // Initialization node (e.g., i = 0)
-	updation := forLoopNode.Body[len(forLoopNode.Body)-1] // Updation node (e.g., i = i + 1)
-
-	ifStmt := forLoopNode.Body[1] // If statement node
-	if ifStmt.Type != "IF_STATEMENT" {
-		panic("Second body node is not an if statement")
-	}
+	condition := forLoopNode.Params[0]
+	init := forLoopNode.Body[0]
+	updation := forLoopNode.Body[len(forLoopNode.Body)-1]
 
 	// Analyze the initialization, condition, and updation
-	//loopVar := init.Left.Value         // e.g., "i"
-	start := atoi(init.Right.Value)    // e.g., 0
-	end := atoi(condition.Right.Value) // e.g., 10
-	step := 1                          // Assume step is always +1 for simplicity
+	loopVar := init.Left.Value
+	start := atoi(init.Right.Value)
+	end := atoi(condition.Right.Value)
+	step := 1
+
 	if updation.Right.Type == "ADD" {
 		step = atoi(updation.Right.Right.Value)
 	}
@@ -502,18 +514,24 @@ func optimizeForLoop(root *Node, forLoopNode *Node, index int) *Node {
 	// Generate the optimized body by simulating the loop execution
 	unrolledLoop := Node{}
 	unrolledLoop.Body = append(unrolledLoop.Body, init)
+
 	for i := start; i < end; i += step {
-		for _, stmt := range forLoopNode.Body[1:] {
-			// Fold each statement within the loop body
+		for _, stmt := range forLoopNode.Body[1 : len(forLoopNode.Body)-1] {
+			// Replace loop variable with current iteration value
+			replacedStmt := replaceLoopVar(stmt, loopVar, strconv.Itoa(i))
+
+			// Handle if statement body separately
 			if stmt.Type == "IF_STATEMENT" {
-				unrolledLoop.Body = append(unrolledLoop.Body, stmt.Body...)
+				for _, bodyStmt := range stmt.Body {
+					replacedBodyStmt := replaceLoopVar(bodyStmt, loopVar, strconv.Itoa(i))
+					unrolledLoop.Body = append(unrolledLoop.Body, replacedBodyStmt)
+				}
 			} else {
-				unrolledLoop.Body = append(unrolledLoop.Body, stmt)
+				unrolledLoop.Body = append(unrolledLoop.Body, replacedStmt)
 			}
 		}
 	}
 
-	printAST(&unrolledLoop)
 	return &unrolledLoop
 }
 

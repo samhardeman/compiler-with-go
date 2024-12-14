@@ -81,11 +81,19 @@ func generateMIPS(instructions []TacInstruction) string {
 	mipsCode.WriteString(".data\n")
 	for _, instr := range instructions {
 		if instr.op == "=" {
-			// If not declared, declare once with a default value.
+			// Declare variables if not already declared
 			if !declaredVariables[instr.result] {
 				declaredVariables[instr.result] = true
-				// Just declare with 0; actual value assigned in text
-				mipsCode.WriteString(fmt.Sprintf("%s: .word 0\n", instr.result))
+
+				// Determine the type and declare appropriately
+				varType := determineTypeFromVar(instr.result)
+				if varType == "STRING" {
+					// Declare string with placeholder or value
+					mipsCode.WriteString(fmt.Sprintf("%s: .asciiz %s\n", instr.result, instr.arg1))
+				} else {
+					// Declare integers
+					mipsCode.WriteString(fmt.Sprintf("%s: .word 0\n", instr.result))
+				}
 			}
 		}
 	}
@@ -95,15 +103,22 @@ func generateMIPS(instructions []TacInstruction) string {
 	for _, instr := range instructions {
 		switch instr.op {
 		case "=":
-			// All assignments happen here
-			if isNumeric(instr.arg1) {
-				// Immediate assignment
-				mipsCode.WriteString(fmt.Sprintf("    li $t0, %s\n", instr.arg1))
-				mipsCode.WriteString(fmt.Sprintf("    sw $t0, %s\n", instr.result))
+			// Handle assignments
+			varType := determineTypeFromVar(instr.result)
+			if varType == "STRING" {
+				// Handle string assignment (directly store the address of the string)
+				// Strings are already declared with .asciiz; no runtime assignment is needed.
 			} else {
-				// Assignment from another variable
-				mipsCode.WriteString(fmt.Sprintf("    lw $t0, %s\n", instr.arg1))
-				mipsCode.WriteString(fmt.Sprintf("    sw $t0, %s\n", instr.result))
+				// Handle integer assignment
+				if isNumeric(instr.arg1) {
+					// Immediate assignment
+					mipsCode.WriteString(fmt.Sprintf("    li $t0, %s\n", instr.arg1))
+					mipsCode.WriteString(fmt.Sprintf("    sw $t0, %s\n", instr.result))
+				} else {
+					// Assignment from another variable
+					mipsCode.WriteString(fmt.Sprintf("    lw $t0, %s\n", instr.arg1))
+					mipsCode.WriteString(fmt.Sprintf("    sw $t0, %s\n", instr.result))
+				}
 			}
 
 		case "blt":
@@ -124,9 +139,19 @@ func generateMIPS(instructions []TacInstruction) string {
 
 		case "call":
 			if instr.arg1 == "write" {
-				mipsCode.WriteString("    li $v0, 1\n")
-				mipsCode.WriteString(fmt.Sprintf("    lw $a0, %s\n", instr.arg2))
-				mipsCode.WriteString("    syscall\n")
+				// Determine the variable's type for printing
+				varType := determineTypeFromVar(instr.arg2)
+				if varType == "STRING" {
+					// Print string
+					mipsCode.WriteString("    li $v0, 4\n")                           // Print string syscall
+					mipsCode.WriteString(fmt.Sprintf("    la $a0, %s\n", instr.arg2)) // Load address of string
+					mipsCode.WriteString("    syscall\n")
+				} else {
+					// Print integer
+					mipsCode.WriteString("    li $v0, 1\n")                           // Print integer syscall
+					mipsCode.WriteString(fmt.Sprintf("    lw $a0, %s\n", instr.arg2)) // Load integer value
+					mipsCode.WriteString("    syscall\n")
+				}
 			}
 		}
 	}

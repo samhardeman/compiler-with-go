@@ -1,15 +1,48 @@
 .data
 opt_t1_INT: .word 0
 opt_t2_INT: .word 0
+opt_t3_STRING: .asciiz "higher"
+opt_t4_STRING: .asciiz "lower"
+opt_t5_STRING: .asciiz "higher\n"
+opt_t6_STRING: .asciiz "higher\n"
+opt_t7_STRING: .asciiz "higher\n"
+opt_t8_STRING: .asciiz "higher\n"
+opt_t9_STRING: .asciiz "higher\n"
+opt_t10_STRING: .asciiz "higher\n"
 
 .text
 main:
+    li $t0, 3
+    sw $t0, opt_t1_INT
+    li $t0, 5
+    sw $t0, opt_t2_INT
+    li $v0, 4
+    la $a0, opt_t5_STRING
+    syscall
+    li $t0, 4
+    sw $t0, opt_t1_INT
+    li $v0, 4
+    la $a0, opt_t6_STRING
+    syscall
+    li $t0, 6
+    sw $t0, opt_t1_INT
+    li $v0, 4
+    la $a0, opt_t7_STRING
+    syscall
     li $t0, 5
     sw $t0, opt_t1_INT
+    li $v0, 4
+    la $a0, opt_t8_STRING
+    syscall
     li $t0, 10
-    sw $t0, opt_t2_INT
-    li $v0, 1
-    lw $a0, opt_t4_STRING
+    sw $t0, opt_t1_INT
+    li $v0, 4
+    la $a0, opt_t9_STRING
+    syscall
+    li $t0, 5
+    sw $t0, opt_t1_INT
+    li $v0, 4
+    la $a0, opt_t10_STRING
     syscall
 
     li $v0, 10

@@ -81,6 +81,7 @@ func readLines(inputFile string) []string {
 		re := regexp.MustCompile(`"(.*?)"|\S+`)
 		tokens := re.FindAllString(scanner.Text(), -1)
 		splitStringInPlace(&tokens)
+		removeComments(&tokens)
 		tokens = append(tokens, "\n")
 		code = append(code, tokens...)
 	}
@@ -102,14 +103,6 @@ func parse(tokens []string, root *Node) *Node {
 		token := tokens[i]
 
 		switch {
-		case token == "/":
-			if tokens[i+1] == "/" {
-				endLineIndex := findEndLine(tokens[i:]) + i
-				i = endLineIndex
-			} else {
-				fmt.Println("Unexpected character '/' at line:", line)
-			}
-
 		case token == "write":
 			endLineIndex := findEndLine(tokens[i:]) + i
 
@@ -148,9 +141,7 @@ func parse(tokens []string, root *Node) *Node {
 
 			body = append(body, funcNode)
 
-			tokensTraversed := closingBraceIndex - i + 1
-
-			i += tokensTraversed
+			i = closingBraceIndex + 1
 
 		case token == "int" || token == "string" || token == "char" || token == "float" || token == "bool":
 
@@ -317,7 +308,8 @@ func parse(tokens []string, root *Node) *Node {
 			root.Returns = append(root.Returns, newNode)
 			root.Body = append(root.Body, newNode)
 
-			i = endLineIndex
+			i = endLineIndex + 1
+
 		case token == "\n":
 			line++
 			i++
@@ -868,9 +860,9 @@ func splitStringInPlace(arr *[]string) {
 	// Updated regex pattern:
 	// 1. Matches quoted strings: "..." or '...'
 	// 2. Matches decimal numbers as a single token (e.g., 123.45)
-	// 3. Matches identifiers and other symbols, operators, etc.
-	pattern := regexp.MustCompile(`"[^"]*"|'[^']*'|\b\d+\.\d+\b|[a-zA-Z0-9]+|[(){}[\];,+\-*/%=<>!]`)
-	// Create a new slice to store the modified array
+	// 3. Matches multi-character operators like ==, >=, <=, and //
+	// 4. Matches single-character operators, symbols, and identifiers
+	pattern := regexp.MustCompile(`"[^"]*"|'[^']*'|\b\d+\.\d+\b|==|>=|<=|//|[a-zA-Z0-9]+|[(){}[\];,+\-*/%=<>!]`)
 	var result []string
 
 	for _, str := range *arr {
@@ -881,6 +873,35 @@ func splitStringInPlace(arr *[]string) {
 	}
 
 	// Replace the original array content with the new split elements
+	*arr = result
+}
+
+// RemoveComments removes everything from // (inclusive) to \n in the array of strings
+func removeComments(arr *[]string) {
+	var result []string
+	skip := false // Flag to indicate whether we are skipping tokens within a comment
+
+	for _, str := range *arr {
+		// Check for the start of a comment
+		if str == "//" {
+			skip = true // Start skipping until we hit \n
+			continue
+		}
+
+		// If we encounter a newline, stop skipping and include the newline
+		if str == "\n" {
+			skip = false
+			result = append(result, str)
+			continue
+		}
+
+		// If we're not in a comment, include the current token
+		if !skip {
+			result = append(result, str)
+		}
+	}
+
+	// Replace the original array content with the filtered array
 	*arr = result
 }
 
@@ -1115,6 +1136,18 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 					newNode.Left.DType, newNode.Right.DType, lineNumber)
 				os.Exit(3)
 			}
+
+		} else if slices.Contains(tokens, "%") {
+			newNode = Node{
+				Type:  "MODULO",
+				DType: "OP",
+				Value: "%",
+				Left:  parseGeneric(bisect(tokens, "%", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, "%", "right"), lineNumber, root),
+			}
+
+			newNode.DType = newNode.Left.DType
+
 		} else if slices.Contains(tokens, "*") {
 			newNode = Node{
 				Type:  "MULT",
@@ -1124,7 +1157,7 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 				Right: parseGeneric(bisect(tokens, "*", "right"), lineNumber, root),
 			}
 
-			operatorTypeComparison(&newNode)
+			//operatorTypeComparison(&newNode)
 
 			newNode.DType = newNode.Left.DType
 
@@ -1137,7 +1170,7 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 				Right: parseGeneric(bisect(tokens, "/", "right"), lineNumber, root),
 			}
 
-			operatorTypeComparison(&newNode)
+			//operatorTypeComparison(&newNode)
 
 			newNode.DType = newNode.Left.DType
 
@@ -1150,7 +1183,7 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 				Right: parseGeneric(bisect(tokens, "+", "right"), lineNumber, root),
 			}
 
-			operatorTypeComparison(&newNode)
+			//operatorTypeComparison(&newNode)
 
 			newNode.DType = newNode.Left.DType
 
@@ -1163,7 +1196,7 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 				Right: parseGeneric(bisect(tokens, "-", "right"), lineNumber, root),
 			}
 
-			operatorTypeComparison(&newNode)
+			//operatorTypeComparison(&newNode)
 
 			newNode.DType = newNode.Left.DType
 
@@ -1372,6 +1405,9 @@ func passGlobals(root *Node) []*Node {
 	var globals []*Node
 	for _, node := range root.Declared {
 		if node.Scope == "GLOBAL" {
+			globals = append(globals, node)
+		}
+		if node.Type == "FUNCTION_DECL" {
 			globals = append(globals, node)
 		}
 	}
