@@ -150,7 +150,6 @@ func fold(root *Node, node *Node, index int) *Node {
 		return nil
 	}
 
-	fmt.Println("node.Value = ", node.Value)
 	switch node.Type {
 	case "ADD", "SUB", "MULT", "DIV":
 		return handleArithmetic(root, node, index)

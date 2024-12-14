@@ -96,8 +96,7 @@ func handleValue(node *Node, writer *bufio.Writer) string {
 	}
 }
 func optimize_tac(root *Node, filename string) {
-	fmt.Println("Debug: AST before TAC generation:")
-	debugPrintAST(root, "")
+	//debugPrintAST(root, "")
 
 	file, err := os.Create(filename)
 	if err != nil {
@@ -144,6 +143,7 @@ func getOperatorSymbol(nodeType string) string {
 	}
 }
 func debugPrintAST(node *Node, prefix string) {
+	fmt.Println("Debug: AST before TAC generation:")
 	if node == nil {
 		return
 	}

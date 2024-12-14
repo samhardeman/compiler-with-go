@@ -42,22 +42,18 @@ func main() {
 	code := readLines(inputFile)
 
 	startParsing := time.Now()
-	fmt.Println("Parsing...")
 	newRoot := parse(code, &root)
 	fmt.Printf("Parsing took %v\n", time.Since(startParsing))
 
 	startOptimization := time.Now()
-	fmt.Println("Finished Parsing! Beginning Optimization...")
 	optimizedAST := optimizer(newRoot)
 	fmt.Printf("Optimization took %v\n", time.Since(startOptimization))
 
 	startTacGeneration := time.Now()
-	fmt.Println("Finished Optimization! Outputting Tac...")
 	optimize_tac(&optimizedAST, "output.tac")
 	fmt.Printf("TAC Generation took %v\n", time.Since(startTacGeneration))
 
 	startMipsCompilation := time.Now()
-	fmt.Println("MIPS Compilation...")
 	tac2Mips("output.tac")
 	fmt.Printf("MIPS Compilation took %v\n", time.Since(startMipsCompilation))
 
@@ -143,9 +139,6 @@ func parse(tokens []string, root *Node) *Node {
 
 			isValid := symbolMan(root, funcNode)
 
-			fmt.Println(isValid)
-
-			fmt.Println(len(funcNode.Declared))
 			parse(tokens[endFunctionDeclIndex+1:closingBraceIndex], funcNode)
 
 			if !isValid {
@@ -758,7 +751,6 @@ func parseArray(tokens []string, lineNumber int, root *Node) Node {
 }
 
 func parseWrite(tokens []string, lineNumber int, root *Node) Node {
-	fmt.Println(tokens)
 	newNode := Node{
 		Type:  "FUNCTION_CALL",
 		Value: tokens[0], // The function name (e.g., 'write')
@@ -1042,8 +1034,6 @@ func operatorTypeComparison(node *Node) {
 }
 
 func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
-
-	fmt.Println("parseGeneric:", tokens)
 
 	var newNode Node
 
