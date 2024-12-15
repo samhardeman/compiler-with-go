@@ -1,12 +1,23 @@
 .data
-opt_t1_INT: .word 5
-opt_t2_INT: .word 10
-opt_t3_STRING: .asciiz "b is higher"
+opt_t1_STRING: .asciiz "less than 10"
+opt_t2_INT: .word 3
+opt_t3_INT: .word 5
+opt_t4_STRING: .asciiz "higher"
+opt_t5_STRING: .asciiz "lower"
+opt_t6_STRING: .asciiz "lower\n"
+opt_t7_INT: .word 4
+opt_t8_STRING: .asciiz "less than 10\n"
 
 .text
 main:
 li $v0, 4
-la $a0, opt_t3_STRING
+la $a0, opt_t6_STRING
+syscall
+li $v0, 4
+la $a0, opt_t6_STRING
+syscall
+li $v0, 4
+la $a0, opt_t8_STRING
 syscall
 
 li $v0, 10

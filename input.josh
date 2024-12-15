@@ -1,19 +1,23 @@
 string lessThan = "less than 10"
 int a = 3
 int b = 5
-string higher = "higher"
-string lower = "lower"
+global string higher = "higher"
+global string lower = "lower"
 
 func print(string word) {
     word = word + "\n"
     write(word)
 }
 
-if (a < b) {
-    print(higher)
-} else {
-    print(lower) // should be this one
+func test(int x, int y) {
+    if (x > y) {
+        print(higher)
+    } else {
+        print(lower) // should be this one
+    }
 }
+
+test(a, b)
 
 a = a + 1
 

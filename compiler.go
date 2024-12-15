@@ -44,12 +44,10 @@ func main() {
 	startParsing := time.Now()
 	newRoot := parse(code, &root)
 	fmt.Printf("Parsing took %v\n", time.Since(startParsing))
-	printAST(newRoot)
 
 	startOptimization := time.Now()
 	optimizedAST := optimizer(newRoot)
 	fmt.Printf("Optimization took %v\n", time.Since(startOptimization))
-	printAST(&optimizedAST)
 
 	startTacGeneration := time.Now()
 	optimize_tac(&optimizedAST, "output.tac")

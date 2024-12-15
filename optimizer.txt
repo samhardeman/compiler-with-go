@@ -12,7 +12,6 @@ type ValueTable struct {
 }
 
 var Values ValueTable
-var Functions ValueTable
 
 func optimizer(root *Node) Node {
 	optimizedAST := Node{
@@ -33,6 +32,7 @@ func optimizer(root *Node) Node {
 				}
 			}
 			updateValueTable(&Values, statement)
+			fmt.Println("Updated values", statement.Left.Value, statement.Right.Value)
 		case "FUNCTION_CALL":
 			if statement.Value == "write" {
 				writeNode := statement
@@ -41,7 +41,7 @@ func optimizer(root *Node) Node {
 				}
 				optimizedAST.Body = append(optimizedAST.Body, writeNode)
 			} else {
-				funcNode := getFunction(&Functions, statement.Value)
+				funcNode := searchForFunctions(root, index, statement.Value)
 				params := statement.Params
 
 				if len(funcNode.Params) != len(params) {
@@ -71,6 +71,7 @@ func optimizer(root *Node) Node {
 			if optimizedIfNode.Left.Value == "FALSE" || optimizedIfNode.Left.Value == "TRUE" {
 				for _, nice := range optimizedIfNode.Body {
 					optimizedStatement := fold(root, nice, index)
+					fmt.Println("optimizer: nil", optimizedStatement == nil)
 					optimizedAST.Body = append(optimizedAST.Body, optimizedStatement)
 				}
 			} else {
@@ -93,9 +94,6 @@ func optimizer(root *Node) Node {
 
 		case "WHILE_LOOP":
 			optimizedAST.Body = append(optimizedAST.Body, statement)
-
-		case "FUNCTION_DECL":
-			addFunction(&Functions, statement)
 		}
 	}
 
@@ -103,6 +101,8 @@ func optimizer(root *Node) Node {
 }
 
 func optimizeIfStatement(root *Node, ifNode *Node, index int) *Node {
+	fmt.Println("Starting opt of if statement with check of:")
+	printAST(ifNode.Left)
 
 	newIfNode := &Node{
 		Type:  "IF_STATEMENT",
@@ -115,6 +115,7 @@ func optimizeIfStatement(root *Node, ifNode *Node, index int) *Node {
 		newIfNode.Left = fold(root, ifNode.Left, index)
 
 		if newIfNode.Left == nil {
+			fmt.Println("left is nil")
 			newIfNode.Left = ifNode.Left
 		}
 
@@ -124,10 +125,12 @@ func optimizeIfStatement(root *Node, ifNode *Node, index int) *Node {
 
 	// Recursive folding for both main body and else body
 	if condition == "FALSE" && ifNode.Right != nil {
+		fmt.Println("FALSE and ELSE is present")
 		// Process else branch
 		for _, stmt := range ifNode.Right.Body {
 			optimizedStmt := fold(root, stmt, index)
 			if optimizedStmt != nil {
+				fmt.Println("	optimizedStmt.Value:", optimizedStmt.Value)
 				// Recursively handle nested if statements
 				if optimizedStmt.Type == "IF_STATEMENT" {
 					recursiveOptimizedStmt := optimizeIfStatement(root, optimizedStmt, index)
@@ -135,9 +138,12 @@ func optimizeIfStatement(root *Node, ifNode *Node, index int) *Node {
 				} else {
 					newIfNode.Body = append(newIfNode.Body, optimizedStmt)
 				}
+			} else {
+				fmt.Println("	nil fold result")
 			}
 		}
 	} else if condition == "TRUE" {
+		fmt.Println("TRUE")
 		// Process main body
 		for _, stmt := range ifNode.Body {
 			optimizedStmt := fold(root, stmt, index) // fold each statement
@@ -158,6 +164,8 @@ func optimizeIfStatement(root *Node, ifNode *Node, index int) *Node {
 	} else { // if it is false and node.right is nil (no else)
 		return nil
 	}
+
+	printAST(newIfNode)
 
 	return newIfNode
 }
@@ -188,16 +196,18 @@ func fold(root *Node, node *Node, index int) *Node {
 			}
 			return writeNode
 		} else {
-			funcNode := getFunction(&Functions, node.Value)
+			funcNode := searchForFunctions(root, index, node.Value)
 			params := node.Params
 
+			fmt.Println("FUNCTION_CALL fold:", node.Value)
+
 			if funcNode == nil {
-				fmt.Println("Optimizer: Function Search Returned Nil Results")
+				fmt.Println("Function search fruitless")
 				return nil
 			}
 
 			if len(funcNode.Params) != len(params) {
-				fmt.Println("Optimizer: More parameters than accepted!")
+				fmt.Println("Optimizer: more parameters than accepted!")
 				os.Exit(3)
 			}
 
@@ -260,6 +270,7 @@ func fold(root *Node, node *Node, index int) *Node {
 
 func optimizeComparison(root *Node, node *Node, index int) *Node {
 	// Debugging print
+	fmt.Printf("Optimizing comparison: %s\n", node.Type)
 
 	leftNode := node.Left
 	rightNode := node.Right
@@ -278,7 +289,7 @@ func optimizeComparison(root *Node, node *Node, index int) *Node {
 
 	// Ensure left and right nodes are not nil
 	if leftNode == nil || rightNode == nil {
-		fmt.Println("Optimizer: Comparison of Nil Nodes")
+		fmt.Println("Comparison: nil nodes")
 		return node
 	}
 
@@ -286,12 +297,14 @@ func optimizeComparison(root *Node, node *Node, index int) *Node {
 	if leftNode.Type == "IDENTIFIER" {
 		resolvedLeft := searchValueTable(Values, leftNode.Value)
 		if resolvedLeft != nil {
+			fmt.Printf("Resolved left identifier %s to %s\n", leftNode.Value, resolvedLeft.Value)
 			leftNode = resolvedLeft
 		}
 	}
 	if rightNode.Type == "IDENTIFIER" {
 		resolvedRight := searchValueTable(Values, rightNode.Value)
 		if resolvedRight != nil {
+			fmt.Printf("Resolved right identifier %s to %s\n", rightNode.Value, resolvedRight.Value)
 			rightNode = resolvedRight
 		}
 	}
@@ -313,7 +326,6 @@ func optimizeComparison(root *Node, node *Node, index int) *Node {
 	// Validate node types
 	if leftNode.Type != "INT" || rightNode.Type != "INT" {
 		fmt.Printf("Comparison: Invalid node types. Left: %s, Right: %s\n", leftNode.Type, rightNode.Type)
-		os.Exit(3)
 		return node
 	}
 
@@ -325,16 +337,22 @@ func optimizeComparison(root *Node, node *Node, index int) *Node {
 	var result *Node
 	switch node.Type {
 	case "GREATER_THAN":
+		fmt.Printf("Comparison result: %d > %d = %v\n", leftVal, rightVal, leftVal > rightVal)
 		if leftVal > rightVal {
 			result = &boolTrue
+			fmt.Printf("%d > %d: TRUE\n", leftVal, rightVal)
 		} else {
 			result = &boolFalse
+			fmt.Printf("%d > %d: FALSE\n", leftVal, rightVal)
 		}
 	case "LESS_THAN":
+		fmt.Printf("Comparison result: %d < %d = %v\n", leftVal, rightVal, leftVal < rightVal)
 		if leftVal < rightVal {
 			result = &boolTrue
+			fmt.Printf("%d < %d: TRUE\n", leftVal, rightVal)
 		} else {
 			result = &boolFalse
+			fmt.Printf("%d < %d: FALSE\n", leftVal, rightVal)
 		}
 	default:
 		fmt.Println("Unknown comparison type")
@@ -697,20 +715,6 @@ func updateValueTable(Values *ValueTable, node *Node) {
 	}
 
 	Values.Body = append(Values.Body, newAssignment)
-}
-
-func addFunction(Functions *ValueTable, node *Node) {
-	Functions.Body = append(Functions.Body, node)
-}
-
-func getFunction(Functions *ValueTable, name string) *Node {
-	for _, function := range Functions.Body {
-		if function.Value == name {
-			return function
-		}
-	}
-	fmt.Println("getFunction: Function Not Found!")
-	return nil
 }
 
 func searchValueTable(Values ValueTable, ident string) *Node {
