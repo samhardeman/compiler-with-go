@@ -9,24 +9,14 @@ func print(string word) {
     write(word)
 }
 
-func test(int x, int y) {
-    if (x > y) {
-        print(higher)
+for (int i = 0; i < 15; i = i + 1) {
+    if (i > 3) {
+        if (i < 10) {
+            print(lessThan)
+        } else {
+            print(higher)
+        }
     } else {
-        print(lower) // should be this one
+        print(lower)
     }
 }
-
-test(a, b)
-
-a = a + 1
-
-if (a > b) {
-    print(higher)
-} else {
-    print(lower) // this one
-    if (a < 10) {
-        print(lessThan)
-    }
-}
-

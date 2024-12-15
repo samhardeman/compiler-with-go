@@ -81,18 +81,15 @@ func optimizer(root *Node) Node {
 			unrolledForLoop := optimizeForLoop(root, statement, index)
 			var optimizedForLoop Node
 			for _, stmt := range unrolledForLoop.Body {
-				optimizedStmt := fold(&optimizedForLoop, stmt, len(optimizedForLoop.Body))
-				if optimizedStmt == nil {
-					optimizedStmt = fold(root, stmt, index)
-				}
+				optimizedStmt := fold(root, stmt, index)
 				if optimizedStmt != nil {
+					if optimizedStmt.Value == "IF_STATEMENT" {
+						optimizedForLoop.Body = append(optimizedForLoop.Body, optimizedStmt.Body...)
+					}
 					optimizedForLoop.Body = append(optimizedForLoop.Body, optimizedStmt)
 				}
 			}
 			optimizedAST.Body = append(optimizedAST.Body, optimizedForLoop.Body...)
-
-		case "WHILE_LOOP":
-			optimizedAST.Body = append(optimizedAST.Body, statement)
 
 		case "FUNCTION_DECL":
 			addFunction(&Functions, statement)
@@ -723,4 +720,28 @@ func searchValueTable(Values ValueTable, ident string) *Node {
 	}
 
 	return nil
+}
+
+func finalRound(root *Node) {
+	if root == nil {
+		return
+	}
+
+	// Process the body slice if it exists
+	if len(root.Body) > 0 {
+		var newBody []*Node
+		for _, child := range root.Body {
+			if child.Type == "ASSIGN" {
+				// Skip nodes with Type == "ASSIGN"
+				continue
+			} else if child.Type == "IF_STATEMENT" {
+				// Replace "IF_STATEMENT" node with its Body
+				newBody = append(newBody, child.Body...)
+			} else {
+				// Keep other nodes as they are
+				newBody = append(newBody, child)
+			}
+		}
+		root.Body = newBody
+	}
 }

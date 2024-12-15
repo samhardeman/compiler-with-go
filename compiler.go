@@ -36,6 +36,8 @@ var line int
 func main() {
 	startTime := time.Now()
 
+	debug := false // set to true to print trees before and after optimization
+
 	line++
 	root := Node{}
 	var inputFile string = getFlags()
@@ -44,11 +46,16 @@ func main() {
 	startParsing := time.Now()
 	newRoot := parse(code, &root)
 	fmt.Printf("Parsing took %v\n", time.Since(startParsing))
-
+	if debug {
+		printAST(newRoot)
+	}
 	startOptimization := time.Now()
 	optimizedAST := optimizer(newRoot)
+	finalRound(&optimizedAST)
 	fmt.Printf("Optimization took %v\n", time.Since(startOptimization))
-
+	if debug {
+		printAST(&optimizedAST)
+	}
 	startTacGeneration := time.Now()
 	optimize_tac(&optimizedAST, "output.tac")
 	fmt.Printf("TAC Generation took %v\n", time.Since(startTacGeneration))
