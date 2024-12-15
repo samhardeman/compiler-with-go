@@ -1,3 +1,4 @@
+string lessThan = "less than 10"
 int a = 3
 int b = 5
 string higher = "higher"
@@ -8,10 +9,10 @@ func print(string word) {
     write(word)
 }
 
-if (a > b) {
+if (a < b) {
     print(higher)
 } else {
-    print(lower)
+    print(lower) // should be this one
 }
 
 a = a + 1
@@ -19,37 +20,9 @@ a = a + 1
 if (a > b) {
     print(higher)
 } else {
-    print(lower)
+    print(lower) // this one
+    if (a < 10) {
+        print(lessThan)
+    }
 }
 
-a = a + 2
-
-if (a > b) {
-    print(higher)
-} else {
-    print(lower)
-}
-
-a = a - 1
-
-if (a > b) {
-    print(higher)
-} else {
-    print(lower)
-}
-
-a = a * 2
-
-if (a > b) {
-    print(higher)
-} else {
-    print(lower)
-}
-
-a = a / 2
-
-if (a > b) {
-    print(higher)
-} else {
-    print(lower)
-}
