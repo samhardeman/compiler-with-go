@@ -1,4 +1,4 @@
-string lessThan = "less than 10"
+global string lessThan = "less than 10"
 int a = 3
 int b = 5
 global string higher = "higher"
@@ -9,14 +9,30 @@ func print(string word) {
     write(word)
 }
 
-for (int i = 0; i < 15; i = i + 1) {
-    if (i > 3) {
-        if (i < 10) {
-            print(lessThan)
-        } else {
-            print(higher)
-        }
+func test(int x, int y) {
+    if (x < y) {
+    print(higher)
     } else {
-        print(lower)
+        print(lower) // should be this one
     }
 }
+
+test(a, b)
+
+a = a + 1
+
+if (a > b) {
+    print(higher)
+} else {
+    print(lower) // this one
+    if (a < 10) {
+        print(lessThan)
+    }
+}
+
+a = 55
+
+if (a == 55) {
+    write(a)
+}
+

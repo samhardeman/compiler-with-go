@@ -31,6 +31,8 @@ type Symbol struct {
 	value string
 }
 
+var DeclaredFunctions ValueTable
+
 var line int
 
 func main() {
@@ -51,6 +53,9 @@ func main() {
 	}
 	startOptimization := time.Now()
 	optimizedAST := optimizer(newRoot)
+	if debug {
+		printAST(&optimizedAST)
+	}
 	finalRound(&optimizedAST)
 	fmt.Printf("Optimization took %v\n", time.Since(startOptimization))
 	if debug {
@@ -143,6 +148,7 @@ func parse(tokens []string, root *Node) *Node {
 			funcNode := parseFunc(tokens[i:endFunctionDeclIndex+1], line)
 
 			funcNode.Declared = append(funcNode.Declared, passGlobals(root)...)
+			DeclaredFunctions.Body = append(DeclaredFunctions.Body, funcNode)
 
 			isValid := symbolMan(root, funcNode)
 
@@ -309,6 +315,8 @@ func parse(tokens []string, root *Node) *Node {
 				fmt.Println("Only one return argument allowed. Error: line " + strconv.Itoa(line))
 				os.Exit(3)
 			}
+
+			fmt.Println(tokens[i:endLineIndex])
 
 			newNode := parseReturn(tokens[i:endLineIndex], line, root)
 
@@ -809,7 +817,7 @@ func parseFunctionCall(tokens []string, lineNumber int, root *Node) Node {
 		functionDeclared = true
 	} else {
 		// Check if the function has been declared
-		for _, declared := range root.Declared {
+		for _, declared := range DeclaredFunctions.Body {
 			if declared.Value == newNode.Value {
 				newNode.DType = declared.DType
 				functionDeclared = true
@@ -837,13 +845,24 @@ func parseFunctionCall(tokens []string, lineNumber int, root *Node) Node {
 
 	args := tokens[2:closeParenIndex]
 
-	for i := 0; i < len(args); i += 2 {
+	var currentChunk []string
+
+	for i := 0; i < len(args); i++ {
 		if args[i] == "," {
-			fmt.Println("Unexpected character \"" + args[i] + "\" in parameters call on line " + strconv.Itoa(lineNumber))
-			os.Exit(3)
+			// If we encounter a ",", process the current chunk
+			if len(currentChunk) > 0 {
+				newNode.Params = append(newNode.Params, parseGeneric(currentChunk, lineNumber, root))
+				currentChunk = nil // Reset the chunk
+			}
 		} else {
-			newNode.Params = append(newNode.Params, parseGeneric(args[i:i+1], lineNumber, root))
+			// Add token to the current chunk
+			currentChunk = append(currentChunk, args[i])
 		}
+	}
+
+	// Process the final chunk if any
+	if len(currentChunk) > 0 {
+		newNode.Params = append(newNode.Params, parseGeneric(currentChunk, lineNumber, root))
 	}
 
 	return newNode
@@ -1042,6 +1061,8 @@ func operatorTypeComparison(node *Node) {
 
 func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 
+	fmt.Println(tokens)
+
 	var newNode Node
 
 	dataType := detectType(strings.Join(tokens, ""))
@@ -1080,30 +1101,50 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 			}
 		}
 	} else {
-		if slices.Contains(tokens, "=") {
+		if slices.Contains(tokens, "==") {
 			newNode = Node{
-				Type:  "ASSIGN",
-				DType: "OP",
-				Value: "=",
-				Left:  parseGeneric(bisect(tokens, "=", "left"), lineNumber, root),
-				Right: parseGeneric(bisect(tokens, "=", "right"), lineNumber, root),
+				Type:  "EQUALS",
+				DType: "BOOL",
+				Value: "==",
+				Left:  parseGeneric(bisect(tokens, "==", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, "==", "right"), lineNumber, root),
 			}
 
-			if newNode.Right.Value == "{}" {
-				expectedElementType := strings.ToUpper(strings.Split(newNode.Left.DType, "]")[1])
-
-				if newNode.Left.DType != "[]any" {
-					for _, element := range newNode.Right.Body {
-						if element.DType != expectedElementType {
-							fmt.Println("Array element " + element.Value + " does not match array type " + expectedElementType)
-							os.Exit(3)
-						}
-					}
-				}
-			} else if newNode.Right.DType != "OP" {
-				operatorTypeComparison(&newNode)
+			if newNode.Left.DType != newNode.Right.DType {
+				fmt.Printf("Cannot compare values of different types: %s and %s on line %d\n",
+					newNode.Left.DType, newNode.Right.DType, lineNumber)
+				os.Exit(3)
+			}
+		} else if slices.Contains(tokens, ">=") {
+			newNode = Node{
+				Type:  "GREATER_THAN_OR_EQUAL_TO",
+				DType: "BOOL",
+				Value: ">=",
+				Left:  parseGeneric(bisect(tokens, ">=", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, ">=", "right"), lineNumber, root),
 			}
 
+			// Check that we're comparing compatible types
+			if newNode.Left.DType != newNode.Right.DType {
+				fmt.Printf("Cannot compare values of different types: %s and %s on line %d\n",
+					newNode.Left.DType, newNode.Right.DType, lineNumber)
+				os.Exit(3)
+			}
+		} else if slices.Contains(tokens, "<=") {
+			newNode = Node{
+				Type:  "LESS_THAN_OR_EQUAL_TO",
+				DType: "BOOL",
+				Value: "<=",
+				Left:  parseGeneric(bisect(tokens, "<=", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, "<=", "right"), lineNumber, root),
+			}
+
+			// Check that we're comparing compatible types
+			if newNode.Left.DType != newNode.Right.DType {
+				fmt.Printf("Cannot compare values of different types: %s and %s on line %d\n",
+					newNode.Left.DType, newNode.Right.DType, lineNumber)
+				os.Exit(3)
+			}
 		} else if slices.Contains(tokens, ">") {
 			newNode = Node{
 				Type:  "GREATER_THAN",
@@ -1135,20 +1176,33 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 				os.Exit(3)
 			}
 
-		} else if slices.Contains(tokens, "==") {
+		} else if slices.Contains(tokens, "=") {
 			newNode = Node{
-				Type:  "EQUALS",
-				DType: "BOOL",
-				Value: "==",
-				Left:  parseGeneric(bisect(tokens, "==", "left"), lineNumber, root),
-				Right: parseGeneric(bisect(tokens, "==", "right"), lineNumber, root),
+				Type:  "ASSIGN",
+				DType: "OP",
+				Value: "=",
+				Left:  parseGeneric(bisect(tokens, "=", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, "=", "right"), lineNumber, root),
 			}
 
-			if newNode.Left.DType != newNode.Right.DType {
-				fmt.Printf("Cannot compare values of different types: %s and %s on line %d\n",
-					newNode.Left.DType, newNode.Right.DType, lineNumber)
-				os.Exit(3)
+			if newNode.Right.Value == "{}" {
+				expectedElementType := strings.ToUpper(strings.Split(newNode.Left.DType, "]")[1])
+
+				if newNode.Left.DType != "[]any" {
+					for _, element := range newNode.Right.Body {
+						if element.DType != expectedElementType {
+							fmt.Println("Array element " + element.Value + " does not match array type " + expectedElementType)
+							os.Exit(3)
+						}
+					}
+				}
+			} else if newNode.Right.DType != "OP" {
+				operatorTypeComparison(&newNode)
 			}
+
+		} else if isFunctionCall(tokens) {
+
+			newNode = parseFunctionCall(tokens, line, root)
 
 		} else if slices.Contains(tokens, "%") {
 			newNode = Node{
@@ -1213,13 +1267,11 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 
 			newNode.DType = newNode.Left.DType
 
-		} else if slices.Contains(tokens, "(") {
-			newNode = parseFunctionCall(tokens, line, root)
 		} else if slices.Contains(tokens, "{") {
 			newNode = parseArray(tokens, line, root)
 		} else if slices.Contains(tokens, "[") {
 			newNode = parseArrayIndex(tokens, lineNumber, root)
-		} else if isIdentifier(tokens[0]) {
+		} else if len(tokens) != 0 && isIdentifier(tokens[0]) {
 
 			newNode = Node{
 				Type:  "IDENTIFIER",
@@ -1278,6 +1330,10 @@ func detectType(tokens string) string {
 	}
 
 	return types
+}
+
+func isFunctionCall(tokens []string) bool {
+	return len(tokens) > 3 && isIdentifier(tokens[0]) && tokens[1] == "(" && tokens[len(tokens)-1] == ")"
 }
 
 // Helper function to check if token is an integer

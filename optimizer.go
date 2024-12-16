@@ -62,7 +62,10 @@ func optimizer(root *Node) Node {
 				}
 
 				foldedFunction := foldFunction(funcNode, foldedParams, index)
-				if funcNode != nil {
+				if foldedFunction != nil && foldedFunction.Type == "ASSIGN" {
+					fmt.Println("ASSIGN")
+					optimizedAST.Body = append(optimizedAST.Body, foldedFunction.Right)
+				} else if funcNode != nil {
 					optimizedAST.Body = append(optimizedAST.Body, foldedFunction)
 				}
 			}
@@ -242,7 +245,7 @@ func fold(root *Node, node *Node, index int) *Node {
 		}
 		return newElseNode
 
-	case "GREATER_THAN", "LESS_THAN":
+	case "GREATER_THAN", "LESS_THAN", "GREATER_THAN_OR_EQUALS_TO", "LESS_THAN_OR_EQUAL_TO", "EQUALS":
 		return optimizeComparison(root, node, index)
 
 	case "FOR_LOOP":
@@ -329,6 +332,24 @@ func optimizeComparison(root *Node, node *Node, index int) *Node {
 		}
 	case "LESS_THAN":
 		if leftVal < rightVal {
+			result = &boolTrue
+		} else {
+			result = &boolFalse
+		}
+	case "GREATER_THAN_OR_EQUAL_TO":
+		if leftVal >= rightVal {
+			result = &boolTrue
+		} else {
+			result = &boolFalse
+		}
+	case "LESS_THAN_OR_EQUAL_TO":
+		if leftVal <= rightVal {
+			result = &boolTrue
+		} else {
+			result = &boolFalse
+		}
+	case "EQUALS":
+		if leftVal == rightVal {
 			result = &boolTrue
 		} else {
 			result = &boolFalse
