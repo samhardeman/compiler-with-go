@@ -1,8 +1,10 @@
 .data
-opt_t1_STRING: .asciiz "higher\n"
-opt_t2_STRING: .asciiz "lower\n"
-opt_t3_STRING: .asciiz "less than 10\n"
-opt_t4_INT: .word 55
+opt_t1_STRING: .asciiz "lower\n"
+opt_t2_STRING: .asciiz "less than 10\n"
+opt_t3_INT: .word 55
+opt_t4_INT: .word 38
+opt_t5_STRING: .asciiz "hello sam"
+opt_t6_STRING: .asciiz "\n"
 
 .text
 main:
@@ -10,13 +12,28 @@ li $v0, 4
 la $a0, opt_t1_STRING
 syscall
 li $v0, 4
-la $a0, opt_t2_STRING
+la $a0, opt_t1_STRING
 syscall
 li $v0, 4
-la $a0, opt_t3_STRING
+la $a0, opt_t2_STRING
+syscall
+li $v0, 1
+lw $a0, opt_t3_INT
 syscall
 li $v0, 1
 lw $a0, opt_t4_INT
+syscall
+li $v0, 1
+lw $a0, opt_t4_INT
+syscall
+li $v0, 1
+lw $a0, opt_t4_INT
+syscall
+li $v0, 4
+la $a0, opt_t5_STRING
+syscall
+li $v0, 4
+la $a0, opt_t6_STRING
 syscall
 
 li $v0, 10

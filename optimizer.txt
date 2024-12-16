@@ -63,9 +63,10 @@ func optimizer(root *Node) Node {
 
 				foldedFunction := foldFunction(funcNode, foldedParams, index)
 				if foldedFunction != nil && foldedFunction.Type == "ASSIGN" {
+					fmt.Println("ASSIGN")
 					optimizedAST.Body = append(optimizedAST.Body, foldedFunction.Right)
 				} else if funcNode != nil {
-					optimizedAST.Body = append(optimizedAST.Body, foldedFunction.Body...)
+					optimizedAST.Body = append(optimizedAST.Body, foldedFunction)
 				}
 			}
 		case "IF_STATEMENT":
@@ -75,6 +76,8 @@ func optimizer(root *Node) Node {
 				continue
 			}
 
+			fmt.Println(optimizedIfNode.Value)
+
 			// Add a nil check for Left before accessing its Value
 			if optimizedIfNode.Left == nil {
 				fmt.Println("Warning: optimizedIfNode.Left is nil")
@@ -82,6 +85,7 @@ func optimizer(root *Node) Node {
 				continue
 			}
 
+			fmt.Println(optimizedIfNode.Left.Value)
 			if optimizedIfNode.Left.Value == "FALSE" || optimizedIfNode.Left.Value == "TRUE" {
 				for _, nice := range optimizedIfNode.Body {
 					optimizedStatement := fold(root, nice, index)
@@ -229,8 +233,8 @@ func fold(root *Node, node *Node, index int) *Node {
 			foldedFunction := foldFunction(funcNode, foldedParams, index)
 
 			for _, statement := range foldedFunction.Body {
-				if statement.Type == "FUNCTION_DECL" {
-					foldedFunction.Body = append(foldedFunction.Body, statement.Body...)
+				if statement.Type != "ASSIGN" {
+
 				}
 			}
 
@@ -774,9 +778,6 @@ func finalRound(root *Node) {
 				continue
 			} else if child.Type == "IF_STATEMENT" {
 				// Replace "IF_STATEMENT" node with its Body
-				newBody = append(newBody, child.Body...)
-			} else if child.Type == "FUNCTION_DECL" {
-				finalRound(child)
 				newBody = append(newBody, child.Body...)
 			} else {
 				// Keep other nodes as they are

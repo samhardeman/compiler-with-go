@@ -1061,7 +1061,7 @@ func operatorTypeComparison(node *Node) {
 
 func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 
-	fmt.Println(tokens)
+	//fmt.Println(tokens)
 
 	var newNode Node
 

@@ -10,11 +10,17 @@ func print(string word) {
 }
 
 func test(int x, int y) {
-    if (x < y) {
-    print(higher)
+    if (x > y) {
+        print(higher)
     } else {
         print(lower) // should be this one
     }
+}
+
+func sayHi(string name) {
+    name = "hello " + name
+    write(name)
+    write("\n")
 }
 
 test(a, b)
@@ -32,7 +38,23 @@ if (a > b) {
 
 a = 55
 
-if (a == 55) {
+if (a == 55) { // true
+    write(a)
+    a = a - 17
+}
+
+write(a)
+
+if (a >= 55) { // false
+    write(a)
+    a = a - 17
+}
+
+write(a)
+
+if (a <= 38) {
     write(a)
 }
 
+string name = "sam"
+sayHi(name)
