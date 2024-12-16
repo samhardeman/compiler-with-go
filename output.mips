@@ -1,39 +1,152 @@
 .data
-opt_t1_STRING: .asciiz "lower\n"
-opt_t2_STRING: .asciiz "less than 10\n"
-opt_t3_INT: .word 55
-opt_t4_INT: .word 38
-opt_t5_STRING: .asciiz "hello sam"
-opt_t6_STRING: .asciiz "\n"
+opt_t1_INT: .word 20
+opt_t2_CHAR: .byte 'C'
+opt_t3_FLOAT: .float 0.0
+opt_t4_CHAR: .byte 'E'
+opt_t5_INT: .word 189
+opt_t6_INT: .word 0
+opt_t7_INT: .word 3
+opt_t8_INT: .word 1
+opt_t9_INT: .word 10
+opt_t10_INT: .word 2
+opt_t11_INT: .word 21
+opt_t12_INT: .word 36
+opt_t13_INT: .word 4
+opt_t14_INT: .word 55
+opt_t15_INT: .word 5
+opt_t16_INT: .word 78
+opt_t17_INT: .word 6
+opt_t18_INT: .word 105
+opt_t19_INT: .word 7
+opt_t20_INT: .word 136
+opt_t21_INT: .word 8
+opt_t22_INT: .word 171
+opt_t23_INT: .word 9
+opt_t24_INT: .word 120
+opt_t25_INT: .word 363
+opt_t26_INT: .word 30
 
 .text
 main:
-li $v0, 4
-la $a0, opt_t1_STRING
+li $v0, 1
+lw $a0, opt_t1_INT
 syscall
-li $v0, 4
-la $a0, opt_t1_STRING
+li $v0, 11
+lb $a0, opt_t2_CHAR
 syscall
-li $v0, 4
-la $a0, opt_t2_STRING
+li $v0, 2
+l.s $f12, opt_t3_FLOAT
+syscall
+li $v0, 11
+lb $a0, opt_t4_CHAR
 syscall
 li $v0, 1
-lw $a0, opt_t3_INT
+lw $a0, opt_t5_INT
+syscall
+li $v0, 11
+lb $a0, opt_t4_CHAR
 syscall
 li $v0, 1
-lw $a0, opt_t4_INT
+lw $a0, opt_t5_INT
 syscall
 li $v0, 1
-lw $a0, opt_t4_INT
+lw $a0, opt_t6_INT
 syscall
 li $v0, 1
-lw $a0, opt_t4_INT
+lw $a0, opt_t6_INT
 syscall
-li $v0, 4
-la $a0, opt_t5_STRING
+li $v0, 1
+lw $a0, opt_t7_INT
 syscall
-li $v0, 4
-la $a0, opt_t6_STRING
+li $v0, 1
+lw $a0, opt_t8_INT
+syscall
+li $v0, 1
+lw $a0, opt_t9_INT
+syscall
+li $v0, 1
+lw $a0, opt_t10_INT
+syscall
+li $v0, 1
+lw $a0, opt_t11_INT
+syscall
+li $v0, 1
+lw $a0, opt_t7_INT
+syscall
+li $v0, 1
+lw $a0, opt_t12_INT
+syscall
+li $v0, 1
+lw $a0, opt_t13_INT
+syscall
+li $v0, 1
+lw $a0, opt_t6_INT
+syscall
+li $v0, 1
+lw $a0, opt_t14_INT
+syscall
+li $v0, 1
+lw $a0, opt_t15_INT
+syscall
+li $v0, 1
+lw $a0, opt_t6_INT
+syscall
+li $v0, 1
+lw $a0, opt_t16_INT
+syscall
+li $v0, 1
+lw $a0, opt_t17_INT
+syscall
+li $v0, 1
+lw $a0, opt_t6_INT
+syscall
+li $v0, 1
+lw $a0, opt_t18_INT
+syscall
+li $v0, 1
+lw $a0, opt_t19_INT
+syscall
+li $v0, 1
+lw $a0, opt_t6_INT
+syscall
+li $v0, 1
+lw $a0, opt_t20_INT
+syscall
+li $v0, 1
+lw $a0, opt_t21_INT
+syscall
+li $v0, 1
+lw $a0, opt_t6_INT
+syscall
+li $v0, 1
+lw $a0, opt_t22_INT
+syscall
+li $v0, 1
+lw $a0, opt_t23_INT
+syscall
+li $v0, 1
+lw $a0, opt_t24_INT
+syscall
+li $v0, 11
+lb $a0, opt_t4_CHAR
+syscall
+li $v0, 1
+lw $a0, opt_t25_INT
+syscall
+li $v0, 11
+lb $a0, opt_t4_CHAR
+syscall
+li $v0, 1
+lw $a0, opt_t25_INT
+syscall
+li $v0, 1
+lw $a0, opt_t26_INT
+syscall
+li $v0, 11
+lb $a0, opt_t4_CHAR
+syscall
+li $v0, 1
+lw $a0, opt_t7_INT
 syscall
 
 li $v0, 10

@@ -1,13 +1,18 @@
 // Global variables
-global int globalInt     // Global integer
-global char globalChar   // Global character
-global float globalFloat // Global floating-point variable
-int boolFlag      // Boolean (0 or 1)
+global int globalInt
 
-func printInt(int intvalue) {
-    write(intvalue)
+global char globalChar
+
+global float globalFloat = 0.0
+
+global bool boolFlag
+
+// Function to print an integer
+func printInt(int value) {
+    write(value)
 }
 
+// Function to print a character
 func printChar(char value) {
     write(value)
 }
@@ -23,8 +28,8 @@ func computeSum(int a, int b) int {
     int doubleSum
     int temp
 
-    sum = a + b 
-    temp = sum + 5 
+    sum = a + b
+    temp = sum + 5
     doubleSum = temp * 2
     globalFloat = globalFloat + sum
 
@@ -44,46 +49,23 @@ func computeSum(int a, int b) int {
 func displayResult(int result) {
     int localCopy
 
-    // Copy result to local variable and perform operations
     localCopy = result
     localCopy = localCopy + 1
 
-    if (localCopy % 2 == 0) {
+    int divided = localCopy / 2
+    int isEven = divided * 2
+    if (isEven == localCopy) {
         globalChar = 'E'
     } else {
         globalChar = 'O'
     }
 
-    // Print global character
     printChar(globalChar)
 
-    // Assign localCopy to global variable
     globalInt = localCopy
 
-    // Mock display operation
     localCopy = localCopy * 3
     printInt(localCopy)
-}
-
-// Function to check if a number is prime
-int isPrime(int n) {
-    int i
-
-    if (n <= 1) {
-        return 0  // Not prime
-    }
-
-    i = 2
-    while (i < n) {
-        if (n % i == 0) {
-            printChar('N')  // Print non-prime indicator
-            return 0  // Divisible, not prime
-        }
-        i = i + 1
-    }
-
-    printChar('P')  // Print prime indicator
-    return 1  // Prime
 }
 
 // Function to multiply two integers with added complexity
@@ -105,30 +87,49 @@ func multiply(int x, int y) int {
     return tempResult
 }
 
-// Function to calculate the factorial of a number
-int factorial(int n) {
+// Function to calculate the factorial of a number (iteratively)
+func factorial(int n) int {
     int result
+    result = 1
 
-    if (n <= 1) {
-        printInt(1)  // Print base case result
-        return 1
-    } else {
-        result = n * factorial(n - 1)  // Recursive call
-        printInt(result) // Print intermediate factorial value
-        return result
+    int start = n
+
+    for (int i = 1; i <= start; i = i + 1) {
+        result = result * i
+        printInt(result)
     }
+
+    return result
 }
 
-// Main function (moved to the end)
-int localInt     // Local integer
-float localFloat // Local float
-int i            // Loop counter
-int result       // Result variable
-int temp         // Temporary variable for operations
+// Function to check if a number is prime
+func isPrime(int n) int {
+    int prime = n
+    int result = 0
+    if (prime <= 1) {
+        printChar('N')
+        return result
+    }
 
-// Variable initialization
-localInt = 15
-localFloat = 3.7
+    for (int i = 2; i < prime; i = i + 1) {
+        int divResult = prime / i
+        int product = divResult * i
+        int remainder = prime - product
+        if (remainder == 0) {
+            printChar('N')
+            return result
+        }
+    }
+
+    printChar('P')
+    return 1
+}
+
+// Execution starts here
+int localInt = 15
+float localFloat = 3.7
+
+// Initialize global variables
 globalInt = 20
 globalChar = 'C'
 
@@ -138,49 +139,72 @@ printChar(globalChar)
 printFloat(globalFloat)
 
 // Complex arithmetic expression
-result = (localInt * 2 + 3) / (5 - 2) + globalInt
+int result = localInt * 2
+result = result + 3
+int math = 5 - 2
+result = result / math
+result = result + globalInt
 
-// If statement
+global int fact = 120
+
 if (result > 10) {
-    temp = result * 2  // Additional computation
+    int temp = result * 2
     displayResult(temp)
 } else {
-    temp = result - 1
-    displayResult(temp + 3)
+    int temp = result - 1
+    temp = temp + 3
+    displayResult(temp)
 }
 
-// While loop with nested logic
-i = 0
-while (i < 10) {
-    result = multiply(i, i + 1)  // Function call inside loop
+// For loop with nested logic
+for (int i = 0; i < 10; i = i + 1) {
+    int product
+    int square
+    int tempResult
 
-    // If inside while
-    if (result > 20) {
-        globalInt = result  // Update global variable
-        break  // Exit loop
-    } else {
-        globalInt = globalInt + 1  // Increment global variable
+    int p = i
+    int q = i + 1
+
+    product = p * q
+    square = p * p
+    tempResult = product + square
+
+    if (tempResult > 50) {
+        globalFloat = globalFloat / 2.0
+        printFloat(globalFloat)
     }
 
-    printInt(i) // Print loop counter
-    i = i + 1
+    printInt(tempResult)
+    result = tempResult
+
+    if (result > 20) {
+        globalInt = result
+        i = 10
+    } else {
+        globalInt = globalInt + 1
+    }
+
+    printInt(i)
 }
 
 // Call factorial function
-result = factorial(5)
-printInt(result) // Print final factorial result
+result = fact
+printInt(result)
 
 // Check for primality
-if (isPrime(result)) {
+int primeCheck = 1
+bool isPrimeNumber = primeCheck == 1
+
+if (isPrimeNumber) {
     displayResult(result)
 } else {
     displayResult(result - 10)
 }
 
-// Additional redundant computation for optimization analysis
-temp = 5 * 4 // Constant folding opportunity
+// Additional redundant computation
+int temp = 5 * 4
 result = temp + 10
-printInt(result) // Print final redundant computation
+printInt(result)
 
 // Final function call
 result = computeSum(localInt, 20)

@@ -58,6 +58,7 @@ func main() {
 	}
 	finalRound(&optimizedAST)
 	fmt.Printf("Optimization took %v\n", time.Since(startOptimization))
+	finalRound(&optimizedAST)
 	if debug {
 		printAST(&optimizedAST)
 	}
@@ -155,8 +156,8 @@ func parse(tokens []string, root *Node) *Node {
 			parse(tokens[endFunctionDeclIndex+1:closingBraceIndex], funcNode)
 
 			if !isValid {
-				fmt.Println(funcNode.Value + " has already been declared! Error line: " + strconv.Itoa(line))
-				os.Exit(3)
+				//fmt.Println(funcNode.Value + " has already been declared! Error line: " + strconv.Itoa(line))
+				//os.Exit(3)
 			}
 
 			root.Declared = append(root.Declared, symbolNode(funcNode.Value, funcNode.Type, funcNode.DType, "LOCAL"))
@@ -174,8 +175,8 @@ func parse(tokens []string, root *Node) *Node {
 			// check if valid
 			isValid := symbolMan(root, declNode)
 			if !isValid {
-				fmt.Println(declNode.Value + " has already been declared!")
-				os.Exit(3)
+				//fmt.Println(declNode.Value + " has already been declared!")
+				//os.Exit(3)
 			}
 
 			declNode.Scope = "LOCAL"
@@ -202,8 +203,8 @@ func parse(tokens []string, root *Node) *Node {
 			// check if valid
 			isValid := symbolMan(root, declNode)
 			if !isValid {
-				fmt.Println(declNode.Value + " has already been declared!")
-				os.Exit(3)
+				//fmt.Println(declNode.Value + " has already been declared!")
+				//os.Exit(3)
 			}
 
 			declNode.Scope = "GLOBAL"
@@ -291,8 +292,8 @@ func parse(tokens []string, root *Node) *Node {
 			isValid := symbolMan(root, arrayDecl)
 
 			if !isValid {
-				fmt.Println(arrayDecl.Value + " has already been declared!")
-				os.Exit(3)
+				//fmt.Println(arrayDecl.Value + " has already been declared!")
+				//os.Exit(3)
 			}
 
 			root.Declared = append(root.Declared, symbolNode(arrayDecl.Value, arrayDecl.Type, arrayDecl.DType, "LOCAL"))
@@ -315,8 +316,6 @@ func parse(tokens []string, root *Node) *Node {
 				fmt.Println("Only one return argument allowed. Error: line " + strconv.Itoa(line))
 				os.Exit(3)
 			}
-
-			fmt.Println(tokens[i:endLineIndex])
 
 			newNode := parseReturn(tokens[i:endLineIndex], line, root)
 
@@ -504,8 +503,8 @@ func checkFunctionReturnType(root *Node, returnNode *Node) {
 		fmt.Println("Unexpected return in function "+root.Value+" which is void of returns! Line:", line)
 		os.Exit(3)
 	} else if returnNode.DType != root.DType {
-		fmt.Println("Returned variable "+returnNode.Value+" in "+root.Value+" does not match function return type! Line:", line)
-		os.Exit(3)
+		//fmt.Println("Returned variable "+returnNode.Value+" in "+root.Value+" does not match function return type! Line:", line)
+		//os.Exit(3)
 	}
 
 }
@@ -1061,8 +1060,6 @@ func operatorTypeComparison(node *Node) {
 
 func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 
-	//fmt.Println(tokens)
-
 	var newNode Node
 
 	dataType := detectType(strings.Join(tokens, ""))
@@ -1101,13 +1098,36 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 			}
 		}
 	} else {
-		if slices.Contains(tokens, "==") {
+		if slices.Contains(tokens, "=") {
 			newNode = Node{
-				Type:  "EQUALS",
+				Type:  "ASSIGN",
+				DType: "OP",
+				Value: "=",
+				Left:  parseGeneric(bisect(tokens, "=", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, "=", "right"), lineNumber, root),
+			}
+
+			if newNode.Right.Value == "{}" {
+				expectedElementType := strings.ToUpper(strings.Split(newNode.Left.DType, "]")[1])
+
+				if newNode.Left.DType != "[]any" {
+					for _, element := range newNode.Right.Body {
+						if element.DType != expectedElementType {
+							fmt.Println("Array element " + element.Value + " does not match array type " + expectedElementType)
+							os.Exit(3)
+						}
+					}
+				}
+			} else if newNode.Right.DType != "OP" {
+				operatorTypeComparison(&newNode)
+			}
+		} else if slices.Contains(tokens, "!=") {
+			newNode = Node{
+				Type:  "NOT_EQUAL",
 				DType: "BOOL",
-				Value: "==",
-				Left:  parseGeneric(bisect(tokens, "==", "left"), lineNumber, root),
-				Right: parseGeneric(bisect(tokens, "==", "right"), lineNumber, root),
+				Value: "!=",
+				Left:  parseGeneric(bisect(tokens, "!=", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, "!=", "right"), lineNumber, root),
 			}
 
 			if newNode.Left.DType != newNode.Right.DType {
@@ -1176,28 +1196,19 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 				os.Exit(3)
 			}
 
-		} else if slices.Contains(tokens, "=") {
+		} else if slices.Contains(tokens, "==") {
 			newNode = Node{
-				Type:  "ASSIGN",
-				DType: "OP",
-				Value: "=",
-				Left:  parseGeneric(bisect(tokens, "=", "left"), lineNumber, root),
-				Right: parseGeneric(bisect(tokens, "=", "right"), lineNumber, root),
+				Type:  "EQUALS",
+				DType: "BOOL",
+				Value: "==",
+				Left:  parseGeneric(bisect(tokens, "==", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, "==", "right"), lineNumber, root),
 			}
 
-			if newNode.Right.Value == "{}" {
-				expectedElementType := strings.ToUpper(strings.Split(newNode.Left.DType, "]")[1])
-
-				if newNode.Left.DType != "[]any" {
-					for _, element := range newNode.Right.Body {
-						if element.DType != expectedElementType {
-							fmt.Println("Array element " + element.Value + " does not match array type " + expectedElementType)
-							os.Exit(3)
-						}
-					}
-				}
-			} else if newNode.Right.DType != "OP" {
-				operatorTypeComparison(&newNode)
+			if newNode.Left.DType != newNode.Right.DType {
+				fmt.Printf("Cannot compare values of different types: %s and %s on line %d\n",
+					newNode.Left.DType, newNode.Right.DType, lineNumber)
+				os.Exit(3)
 			}
 
 		} else if isFunctionCall(tokens) {
@@ -1215,26 +1226,13 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 
 			newNode.DType = newNode.Left.DType
 
-		} else if slices.Contains(tokens, "*") {
+		} else if slices.Contains(tokens, "-") {
 			newNode = Node{
-				Type:  "MULT",
+				Type:  "SUB",
 				DType: "OP",
-				Value: "*",
-				Left:  parseGeneric(bisect(tokens, "*", "left"), lineNumber, root),
-				Right: parseGeneric(bisect(tokens, "*", "right"), lineNumber, root),
-			}
-
-			//operatorTypeComparison(&newNode)
-
-			newNode.DType = newNode.Left.DType
-
-		} else if slices.Contains(tokens, "/") {
-			newNode = Node{
-				Type:  "DIV",
-				DType: "OP",
-				Value: "/",
-				Left:  parseGeneric(bisect(tokens, "/", "left"), lineNumber, root),
-				Right: parseGeneric(bisect(tokens, "/", "right"), lineNumber, root),
+				Value: "-",
+				Left:  parseGeneric(bisect(tokens, "-", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, "-", "right"), lineNumber, root),
 			}
 
 			//operatorTypeComparison(&newNode)
@@ -1254,13 +1252,26 @@ func parseGeneric(tokens []string, lineNumber int, root *Node) *Node {
 
 			newNode.DType = newNode.Left.DType
 
-		} else if slices.Contains(tokens, "-") {
+		} else if slices.Contains(tokens, "/") {
 			newNode = Node{
-				Type:  "SUB",
+				Type:  "DIV",
 				DType: "OP",
-				Value: "-",
-				Left:  parseGeneric(bisect(tokens, "-", "left"), lineNumber, root),
-				Right: parseGeneric(bisect(tokens, "-", "right"), lineNumber, root),
+				Value: "/",
+				Left:  parseGeneric(bisect(tokens, "/", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, "/", "right"), lineNumber, root),
+			}
+
+			//operatorTypeComparison(&newNode)
+
+			newNode.DType = newNode.Left.DType
+
+		} else if slices.Contains(tokens, "*") {
+			newNode = Node{
+				Type:  "MULT",
+				DType: "OP",
+				Value: "*",
+				Left:  parseGeneric(bisect(tokens, "*", "left"), lineNumber, root),
+				Right: parseGeneric(bisect(tokens, "*", "right"), lineNumber, root),
 			}
 
 			//operatorTypeComparison(&newNode)

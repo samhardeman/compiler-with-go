@@ -332,7 +332,7 @@ func optimizeComparison(root *Node, node *Node, index int) *Node {
 
 	// Validate node types
 	if leftNode.Type != "INT" || rightNode.Type != "INT" {
-		fmt.Printf("Comparison: Invalid node types. Left: %s, Right: %s\n", leftNode.Type, rightNode.Type)
+		fmt.Printf("Comparison: Invalid node types. Left: %s, %s, Right: %s\n", leftNode.Type, node.Value, rightNode.Type)
 		os.Exit(3)
 		return node
 	}
@@ -370,6 +370,12 @@ func optimizeComparison(root *Node, node *Node, index int) *Node {
 		}
 	case "EQUALS":
 		if leftVal == rightVal {
+			result = &boolTrue
+		} else {
+			result = &boolFalse
+		}
+	case "NOT_EQUAL":
+		if leftVal != rightVal {
 			result = &boolTrue
 		} else {
 			result = &boolFalse

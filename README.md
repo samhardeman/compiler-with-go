@@ -74,3 +74,8 @@ for (int i = 0; i < [value]; i = i + [increment]) {
     [body]
 }
 ```
+
+### Printing
+The built-in function used for printing is `write(x)`
+
+The `write` method takes any type as an arg and will cause a MIPS syscall to print

@@ -1,4 +1,4 @@
-global string lessThan = "less than 10"
+string lessThan = "less than 10"
 int a = 3
 int b = 5
 global string higher = "higher"
@@ -52,7 +52,7 @@ if (a >= 55) { // false
 
 write(a)
 
-if (a <= 38) {
+if (a <= 38) { // true
     write(a)
 }
 
